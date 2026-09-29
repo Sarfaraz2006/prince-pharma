@@ -47,6 +47,15 @@ import {
   BookOpen,
   Info,
   FileCheck,
+  Pencil,
+  Edit3,
+  Camera,
+  UploadCloud,
+  FileSpreadsheet,
+  Copy,
+  Check,
+  ExternalLink,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   Product,
@@ -151,6 +160,43 @@ export default function PrincePharmaApp() {
   const [showSubstituteModal, setShowSubstituteModal] = useState(false);
   const [showGuideBanner, setShowGuideBanner] = useState(true);
   const [showSystemGuideModal, setShowSystemGuideModal] = useState(false);
+
+  // WhatsApp Share Dialog Info State
+  const [whatsAppShareInfo, setWhatsAppShareInfo] = useState<{
+    invoiceNumber: string;
+    fileName: string;
+    phone: string;
+    total: number;
+  } | null>(null);
+
+  // Admin / Owner Inventory & Price Editing States
+  const [inventoryViewMode, setInventoryViewMode] = useState<'batches' | 'products'>('batches');
+  const [inventorySearchTerm, setInventorySearchTerm] = useState<string>('');
+  const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  // Automated Distributor Bill Inward & OCR Scanner States
+  const [showAutoInwardModal, setShowAutoInwardModal] = useState<boolean>(false);
+  const [autoInwardSupplierId, setAutoInwardSupplierId] = useState<string>('sup-satyam');
+  const [autoInwardInvoiceNo, setAutoInwardInvoiceNo] = useState<string>('A012147');
+  const [autoInwardDate, setAutoInwardDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [isAnalyzingBill, setIsAnalyzingBill] = useState<boolean>(false);
+  const [autoInwardItems, setAutoInwardItems] = useState<Array<{
+    id: string;
+    productName: string;
+    genericName?: string;
+    pack: string;
+    quantity: number;
+    freeQuantity: number;
+    purchaseRate: number;
+    mrp: number;
+    wholesalePrice: number;
+    batchNumber: string;
+    expiryDate: string;
+    gstRate: number;
+    hsnCode: string;
+    discountPercent: number;
+  }>>([]);
 
   // Form states for modals
   const [newProductForm, setNewProductForm] = useState({
@@ -876,27 +922,25 @@ export default function PrincePharmaApp() {
     notify(`Sales return ${newReturn.returnNumber} recorded! Stock restored to batch.`);
   };
 
-  // WhatsApp share link generator
+  // WhatsApp share link & PDF generator with native Web Share file attachment + clipboard image + fallback
   const handleWhatsAppWithPdf = async (inv: Invoice) => {
     try {
-      notify('Generating bill PDF...');
-      // Dynamic imports
+      notify('Generating authentic bill PDF...');
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
-      
-      const el = document.getElementById('invoice-print-area');
+
+      const el = document.getElementById('invoice-print-area') || document.getElementById('invoice-live-preview-area');
       if (!el) {
-        // Fallback: just open WhatsApp with text
-        const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'N/A'}\n\n*ITEMS:*\n${inv.items.map(item => `• ${item.productName} × ${item.quantity} = ₹${(item.quantity * item.unitPrice).toFixed(2)}`).join('\n')}\n\n*GRAND TOTAL: ₹${inv.grandTotal.toFixed(2)}*\nPayment: ${inv.paymentMethod.toUpperCase()}\n\nThank you! DL: ${settings.dlNumber20b}`;
+        const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'N/A'}\n\n*ITEMS:*\n${inv.items.map((item) => `• ${item.productName} × ${item.quantity} = ₹${(item.quantity * item.unitPrice).toFixed(2)}`).join('\n')}\n\n*GRAND TOTAL: ₹${inv.grandTotal.toFixed(2)}*\nPayment: ${inv.paymentMethod.toUpperCase()}\n\nThank you! DL: ${settings.dlNumber20b}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
         return;
       }
-      
-      const canvas = await html2canvas(el, { 
+
+      const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        logging: false
+        logging: false,
       });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -906,19 +950,62 @@ export default function PrincePharmaApp() {
       const imgH = pageW * canvasAspect;
       const finalH = Math.min(imgH, pageH);
       pdf.addImage(imgData, 'PNG', 0, 0, pageW, finalH);
-      
-      // Download PDF
-      pdf.save(`Invoice_${inv.invoiceNumber}.pdf`);
-      
-      // Then open WhatsApp with professional summary text
-      const phone = inv.customerPhone?.replace(/[^0-9]/g, '') || '';
-      const text = `*${settings.name}*\n📄 Invoice *#${inv.invoiceNumber}* has been sent to you.\nDate: ${inv.date} | Amount: *₹${inv.grandTotal.toFixed(2)}*\nPayment: ${inv.paymentMethod.toUpperCase()}\n\n_Please find the attached PDF invoice. For queries, call ${settings.phone}_`;
-      const waUrl = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
-      setTimeout(() => window.open(waUrl, '_blank'), 500);
-      notify('PDF downloaded! Opening WhatsApp...');
+
+      const pdfBlob = pdf.output('blob');
+      const fileName = `Invoice_${inv.invoiceNumber}.pdf`;
+      const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+      const phone = (inv.customerPhone || '').replace(/[^0-9]/g, '');
+      const waCaption = `*${settings.name} — TAX INVOICE #${inv.invoiceNumber}*\nDate: ${inv.date} | Grand Total: *₹${inv.grandTotal.toFixed(2)}*\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'Consultant'}\nPayment: ${inv.paymentMethod.toUpperCase()}\n\n_Official GST Tax Invoice attached. For queries contact: ${settings.phone}_`;
+
+      // 1. Native Web Share API (Attaches PDF file directly in WhatsApp on Mobile / Tablet / Modern Browsers)
+      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        try {
+          await navigator.share({
+            files: [pdfFile],
+            title: `Tax Invoice ${inv.invoiceNumber} - ${settings.name}`,
+            text: waCaption,
+          });
+          notify('Invoice PDF attached & shared via WhatsApp!');
+          return;
+        } catch (shareErr: any) {
+          if (shareErr.name === 'AbortError') return;
+          console.warn('Native share error, falling back:', shareErr);
+        }
+      }
+
+      // 2. Download PDF file to device
+      pdf.save(fileName);
+
+      // 3. Copy bill image to system clipboard (allows instant Ctrl+V paste in WhatsApp Web)
+      try {
+        canvas.toBlob(async (blob) => {
+          if (blob && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          }
+        }, 'image/png');
+      } catch (e) {
+        console.warn('Clipboard copy not supported:', e);
+      }
+
+      // 4. Open WhatsApp
+      const waUrl = phone.length >= 10
+        ? `https://wa.me/91${phone.slice(-10)}?text=${encodeURIComponent(waCaption)}`
+        : `https://wa.me/?text=${encodeURIComponent(waCaption)}`;
+
+      setTimeout(() => {
+        window.open(waUrl, '_blank');
+      }, 500);
+
+      setWhatsAppShareInfo({
+        invoiceNumber: inv.invoiceNumber,
+        fileName,
+        phone,
+        total: inv.grandTotal,
+      });
+      notify('PDF Downloaded! Opening WhatsApp chat...');
     } catch (err) {
       console.error('PDF generation failed:', err);
-      // Fallback to text
       const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nTotal: ₹${inv.grandTotal.toFixed(2)}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
@@ -928,6 +1015,386 @@ export default function PrincePharmaApp() {
   const getWhatsAppPaymentReminderUrl = (cust: Customer) => {
     const text = `*PRINCE PHARMA - PAYMENT REMINDER*\nDear ${cust.businessName},\nThis is a friendly reminder that your outstanding ledger balance is *₹${cust.currentOutstanding.toLocaleString()}*.\nKindly process the settlement at your earliest convenience.\n\nBank / UPI Details available on request.\nContact: ${settings.phone}`;
     return `https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`;
+  };
+
+  // Admin / Owner Batch & Price Update Handler
+  const handleSaveBatchEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBatch) return;
+
+    const updatedBatches = batches.map((b) =>
+      b.id === editingBatch.id ? { ...editingBatch } : b
+    );
+    setBatches(updatedBatches);
+    persist('pp_batches_v4', updatedBatches);
+
+    const prod = products.find((p) => p.id === editingBatch.productId);
+    addAuditLog(
+      'STOCK_PRICE_UPDATE',
+      editingBatch.batchNumber,
+      `Admin (${userRole}) updated batch ${editingBatch.batchNumber} (${prod?.name}): Stock: ${editingBatch.sellableStock}, Cost Rate: ₹${editingBatch.purchaseRate}, MRP: ₹${editingBatch.mrp}, Wholesale: ₹${editingBatch.wholesalePrice}, Expiry: ${editingBatch.expiryDate}, Status: ${editingBatch.status}`
+    );
+
+    notify(`Batch ${editingBatch.batchNumber} pricing & stock updated!`);
+    setEditingBatch(null);
+  };
+
+  // Admin / Owner Product Master Update Handler
+  const handleSaveProductEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    const updatedProducts = products.map((p) =>
+      p.id === editingProduct.id ? { ...editingProduct } : p
+    );
+    setProducts(updatedProducts);
+    persist('pp_products_v4', updatedProducts);
+
+    addAuditLog(
+      'PRODUCT_PRICE_UPDATE',
+      editingProduct.name,
+      `Admin (${userRole}) updated product master: MRP: ₹${editingProduct.mrp}, Wholesale: ₹${editingProduct.defaultWholesalePrice}, Retail: ₹${editingProduct.defaultRetailPrice}, Rack: ${editingProduct.rackLocation}`
+    );
+
+    notify(`Product ${editingProduct.name} master & catalog pricing updated!`);
+    setEditingProduct(null);
+  };
+
+  // Admin / Owner Product Delete Handler
+  const handleDeleteProduct = (productId: string) => {
+    const prod = products.find((p) => p.id === productId);
+    if (!prod) return;
+    const hasStock = batches.some((b) => b.productId === productId && b.sellableStock > 0);
+    if (hasStock) {
+      return notify(`Cannot delete "${prod.name}" because it still has active stock in godown. Please adjust or return stock first.`, 'error');
+    }
+    const updatedProducts = products.filter((p) => p.id !== productId);
+    const updatedBatches = batches.filter((b) => b.productId !== productId);
+    setProducts(updatedProducts);
+    setBatches(updatedBatches);
+    persist('pp_products_v4', updatedProducts);
+    persist('pp_batches_v4', updatedBatches);
+    addAuditLog('PRODUCT_DELETE', prod.name, `Product master deleted by ${userRole}`);
+    notify(`Product "${prod.name}" deleted from master.`);
+    setEditingProduct(null);
+  };
+
+  // Automated Distributor Bill Inward Handlers
+  const handleLoadSatyamBillItems = () => {
+    setAutoInwardSupplierId('sup-satyam');
+    setAutoInwardInvoiceNo('A012147');
+    setAutoInwardItems([
+      {
+        id: 'sat-1',
+        productName: 'IGCON BEAUTY SOAP',
+        genericName: 'Herbal Soap with Glycerin & Vitamin E',
+        pack: '75GM',
+        quantity: 3,
+        freeQuantity: 0,
+        purchaseRate: 60.95,
+        mrp: 80.00,
+        wholesalePrice: 65.00,
+        batchNumber: 'GS26024',
+        expiryDate: '2028-01-01',
+        gstRate: 5,
+        hsnCode: '300490',
+        discountPercent: 8,
+      },
+      {
+        id: 'sat-2',
+        productName: 'ZENFLOX E/E DROPS',
+        genericName: 'Ofloxacin 0.3% Eye/Ear Drops',
+        pack: '10ML',
+        quantity: 3,
+        freeQuantity: 0,
+        purchaseRate: 45.78,
+        mrp: 60.09,
+        wholesalePrice: 48.00,
+        batchNumber: 'A5AUZ001',
+        expiryDate: '2028-04-01',
+        gstRate: 5,
+        hsnCode: '300490',
+        discountPercent: 8,
+      },
+      {
+        id: 'sat-3',
+        productName: 'ZEDEX SYP 100ML',
+        genericName: 'Dextromethorphan HBr + Chlorpheniramine',
+        pack: '100ML',
+        quantity: 2,
+        freeQuantity: 0,
+        purchaseRate: 150.46,
+        mrp: 197.48,
+        wholesalePrice: 158.00,
+        batchNumber: 'D260316',
+        expiryDate: '2028-03-01',
+        gstRate: 5,
+        hsnCode: '30049099',
+        discountPercent: 8,
+      },
+      {
+        id: 'sat-4',
+        productName: 'COREX DX SYP',
+        genericName: 'Dextromethorphan + Chlorpheniramine Maleate',
+        pack: '100ML',
+        quantity: 3,
+        freeQuantity: 0,
+        purchaseRate: 121.78,
+        mrp: 159.83,
+        wholesalePrice: 128.00,
+        batchNumber: '2614006E',
+        expiryDate: '2027-12-01',
+        gstRate: 5,
+        hsnCode: '300490',
+        discountPercent: 8,
+      },
+      {
+        id: 'sat-5',
+        productName: 'CALPOL DROP',
+        genericName: 'Paracetamol Paediatric Oral Drops 100mg/ml',
+        pack: '1*30',
+        quantity: 3,
+        freeQuantity: 0,
+        purchaseRate: 23.60,
+        mrp: 30.98,
+        wholesalePrice: 25.00,
+        batchNumber: 'NA520',
+        expiryDate: '2028-02-01',
+        gstRate: 5,
+        hsnCode: '30049069',
+        discountPercent: 7,
+      },
+      {
+        id: 'sat-6',
+        productName: 'OMEE 20 CAP',
+        genericName: 'Omeprazole Capsules IP 20mg',
+        pack: '1*20',
+        quantity: 3,
+        freeQuantity: 0,
+        purchaseRate: 22.19,
+        mrp: 61.32,
+        wholesalePrice: 25.00,
+        batchNumber: '26860725',
+        expiryDate: '2028-03-01',
+        gstRate: 5,
+        hsnCode: '300490',
+        discountPercent: 0,
+      },
+      {
+        id: 'sat-7',
+        productName: 'DYNAPAR INJ',
+        genericName: 'Diclofenac Sodium 75mg/1ml',
+        pack: '3ML',
+        quantity: 10,
+        freeQuantity: 0,
+        purchaseRate: 31.12,
+        mrp: 40.83,
+        wholesalePrice: 33.00,
+        batchNumber: 'PA26023',
+        expiryDate: '2028-02-01',
+        gstRate: 5,
+        hsnCode: '300490',
+        discountPercent: 6,
+      },
+      {
+        id: 'sat-8',
+        productName: 'WYSOLONE 5 MG',
+        genericName: 'Prednisolone Tablets IP 5mg',
+        pack: '1*15',
+        quantity: 8,
+        freeQuantity: 0,
+        purchaseRate: 8.87,
+        mrp: 10.82,
+        wholesalePrice: 9.20,
+        batchNumber: 'NY8243',
+        expiryDate: '2028-01-01',
+        gstRate: 5,
+        hsnCode: '300490',
+        discountPercent: 6,
+      },
+    ]);
+    notify('Satyam Pharmaceuticals Invoice #A012147 items extracted!');
+  };
+
+  const handleLoadCiplaBillItems = () => {
+    setAutoInwardSupplierId('sup-1');
+    setAutoInwardInvoiceNo(`INV-CIPLA-${Date.now().toString().slice(-4)}`);
+    setAutoInwardItems([
+      {
+        id: 'cip-1',
+        productName: 'Dolo 650 Tablet',
+        genericName: 'Paracetamol IP 650mg',
+        pack: '15*15',
+        quantity: 50,
+        freeQuantity: 5,
+        purchaseRate: 24.50,
+        mrp: 33.60,
+        wholesalePrice: 27.00,
+        batchNumber: `DL-26${Math.random().toString(36).slice(2, 5).toUpperCase()}`,
+        expiryDate: '2028-06-01',
+        gstRate: 12,
+        hsnCode: '30049069',
+        discountPercent: 5,
+      },
+      {
+        id: 'cip-2',
+        productName: 'Augmentin 625 Duo Tablet',
+        genericName: 'Amoxicillin 500mg + Clavulanic Acid 125mg',
+        pack: '1*10',
+        quantity: 20,
+        freeQuantity: 2,
+        purchaseRate: 155.00,
+        mrp: 215.00,
+        wholesalePrice: 172.00,
+        batchNumber: `AG-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        expiryDate: '2028-05-01',
+        gstRate: 12,
+        hsnCode: '30041010',
+        discountPercent: 5,
+      },
+      {
+        id: 'cip-3',
+        productName: 'Pan 40 Tablet',
+        genericName: 'Pantoprazole Sodium Gastro-resistant IP 40mg',
+        pack: '1*15',
+        quantity: 30,
+        freeQuantity: 0,
+        purchaseRate: 110.00,
+        mrp: 155.00,
+        wholesalePrice: 124.00,
+        batchNumber: `PAN-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        expiryDate: '2028-08-01',
+        gstRate: 12,
+        hsnCode: '30049099',
+        discountPercent: 5,
+      },
+    ]);
+    notify('Cipla Distribution Restock items loaded!');
+  };
+
+  const handleConfirmAutoInward = () => {
+    if (autoInwardItems.length === 0) {
+      return notify('No items in draft invoice. Load or add items first.', 'error');
+    }
+
+    const supplier = suppliers.find((s) => s.id === autoInwardSupplierId) || suppliers[0];
+    let updatedProducts = [...products];
+    const newBatchesToAdd: Batch[] = [];
+    const purchaseItemsToAdd: any[] = [];
+    let totalTaxable = 0;
+    let totalGst = 0;
+
+    for (const item of autoInwardItems) {
+      let prod = updatedProducts.find(
+        (p) => p.name.toLowerCase().trim() === item.productName.toLowerCase().trim()
+      );
+
+      if (!prod) {
+        prod = {
+          id: `prod-auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: item.productName.trim(),
+          brand: supplier.name,
+          genericName: item.genericName || item.productName,
+          manufacturer: supplier.name,
+          category: item.pack.includes('ML') ? 'syrup' : item.pack.includes('INJ') ? 'injection' : 'tablet',
+          packSize: parseInt(item.pack.replace(/[^0-9]/g, '')) || 10,
+          packUnit: item.pack.includes('ML') ? 'bottle' : 'strip',
+          barcode: `890${Date.now().toString().slice(-9)}`,
+          hsnCode: item.hsnCode || '30049099',
+          gstRate: item.gstRate || 12,
+          mrp: item.mrp,
+          defaultRetailPrice: item.mrp,
+          defaultWholesalePrice: item.wholesalePrice || item.purchaseRate * 1.15,
+          reorderLevel: 15,
+          rackLocation: 'Rack B-01',
+          schedule: 'OTC',
+          prescriptionRequired: false,
+          isActive: true,
+        };
+        updatedProducts.push(prod);
+      }
+
+      const newBatch: Batch = {
+        id: `batch-auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        productId: prod.id,
+        batchNumber: item.batchNumber.trim().toUpperCase(),
+        expiryDate: item.expiryDate.includes('-') && item.expiryDate.length === 7 ? `${item.expiryDate}-01` : item.expiryDate,
+        purchaseDate: autoInwardDate,
+        purchaseRate: item.purchaseRate,
+        mrp: item.mrp,
+        retailPrice: item.mrp,
+        wholesalePrice: item.wholesalePrice || prod.defaultWholesalePrice,
+        supplierId: supplier.id,
+        sellableStock: Number(item.quantity) + Number(item.freeQuantity || 0),
+        damagedStock: 0,
+        initialStock: Number(item.quantity) + Number(item.freeQuantity || 0),
+        status: 'active',
+      };
+      newBatchesToAdd.push(newBatch);
+
+      const lineTaxable = item.purchaseRate * item.quantity;
+      const lineGst = (lineTaxable * (item.gstRate || prod.gstRate)) / 100;
+      totalTaxable += lineTaxable;
+      totalGst += lineGst;
+
+      purchaseItemsToAdd.push({
+        productId: prod.id,
+        productName: prod.name,
+        batchNumber: newBatch.batchNumber,
+        expiryDate: newBatch.expiryDate,
+        quantity: item.quantity,
+        freeQuantity: item.freeQuantity || 0,
+        purchaseRate: item.purchaseRate,
+        mrp: item.mrp,
+        wholesalePrice: newBatch.wholesalePrice,
+        gstRate: item.gstRate || prod.gstRate,
+        taxableAmount: lineTaxable,
+        totalAmount: lineTaxable + lineGst,
+      });
+    }
+
+    const grandTotal = totalTaxable + totalGst;
+
+    const newPurchaseRecord: Purchase = {
+      id: `pur-${Date.now()}`,
+      purchaseNumber: `PUR-2026-${String(purchases.length + 1).padStart(3, '0')}`,
+      supplierInvoiceNumber: autoInwardInvoiceNo || `INV-${Date.now().toString().slice(-6)}`,
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      date: autoInwardDate,
+      subtotal: totalTaxable,
+      gstTotal: totalGst,
+      grandTotal,
+      paymentStatus: 'credit',
+      items: purchaseItemsToAdd,
+    };
+
+    const updatedSuppliers = suppliers.map((s) =>
+      s.id === supplier.id ? { ...s, currentOutstanding: s.currentOutstanding + grandTotal } : s
+    );
+
+    const updatedBatches = [...newBatchesToAdd, ...batches];
+    const updatedPurchases = [newPurchaseRecord, ...purchases];
+
+    setProducts(updatedProducts);
+    setBatches(updatedBatches);
+    setPurchases(updatedPurchases);
+    setSuppliers(updatedSuppliers);
+
+    persist('pp_products_v4', updatedProducts);
+    persist('pp_batches_v4', updatedBatches);
+    persist('pp_purchases_v4', updatedPurchases);
+    persist('pp_suppliers_v4', updatedSuppliers);
+
+    addAuditLog(
+      'AUTO_PURCHASE_INWARD',
+      newPurchaseRecord.purchaseNumber,
+      `Auto-inwarded ${autoInwardItems.length} products (${newBatchesToAdd.reduce((s, b) => s + b.sellableStock, 0)} units) from ${supplier.name} Bill #${autoInwardInvoiceNo}. Total: ₹${grandTotal.toFixed(2)}`
+    );
+
+    setShowAutoInwardModal(false);
+    setAutoInwardItems([]);
+    notify(`Successfully inwarded ${autoInwardItems.length} medicines into stock from ${supplier.name}!`);
   };
 
   // Instant Search filter
@@ -1729,11 +2196,72 @@ export default function PrincePharmaApp() {
                     STEP 4: GST BILL PREVIEW
                   </span>
                 </div>
-                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-                  Certified Format
-                </span>
+                <div className="flex items-center gap-2">
+                  {cartItems.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const previewInv: Invoice = {
+                          id: 'inv-live-share',
+                          invoiceNumber: saleType === 'retail' ? 'RET-LIVE' : 'WS-LIVE',
+                          type: saleType,
+                          date: new Date().toISOString().split('T')[0],
+                          customerId: saleType === 'wholesale' ? activeCustomer.id : undefined,
+                          customerName: saleType === 'retail' ? walkinName : activeCustomer.businessName,
+                          customerPhone: saleType === 'retail' ? walkinPhone : activeCustomer.phone,
+                          doctorName: doctorName,
+                          paymentMethod: paymentMethod,
+                          paymentStatus: 'paid',
+                          subtotal: billSummary.subtotal,
+                          discountTotal: billSummary.discount,
+                          taxableTotal: billSummary.taxable,
+                          cgstTotal: billSummary.cgst,
+                          sgstTotal: billSummary.sgst,
+                          igstTotal: 0,
+                          grandTotal: billSummary.total,
+                          amountInWords: billSummary.amountInWords,
+                          items: cartAllocations.map((a, i) => ({
+                            id: `live-item-${i}`,
+                            productId: a.product.id,
+                            productName: a.product.name,
+                            pack: `${a.product.packSize}${a.product.packUnit}`,
+                            hsnCode: a.product.hsnCode,
+                            gstRate: a.product.gstRate,
+                            quantity: a.quantity,
+                            freeQuantity: a.freeQuantity,
+                            mrp: a.product.mrp,
+                            unitPrice: a.unitRate,
+                            discountPercent: a.discountPercent || 0,
+                            taxableAmount: a.lineTotal / (1 + a.product.gstRate / 100),
+                            cgstAmount: (a.lineTotal - a.lineTotal / (1 + a.product.gstRate / 100)) / 2,
+                            sgstAmount: (a.lineTotal - a.lineTotal / (1 + a.product.gstRate / 100)) / 2,
+                            igstAmount: 0,
+                            totalAmount: a.lineTotal,
+                            allocations: a.allocations.map((al) => ({
+                              batchId: al.batch.id,
+                              batchNumber: al.batch.batchNumber,
+                              expiryDate: al.batch.expiryDate,
+                              quantity: al.qty,
+                              rate: a.unitRate,
+                              mrp: al.batch.mrp,
+                              amount: al.qty * a.unitRate,
+                            })),
+                          })),
+                        };
+                        handleWhatsAppWithPdf(previewInv);
+                      }}
+                      className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer"
+                      title="Share live bill PDF to WhatsApp"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      <span>WhatsApp PDF</span>
+                    </button>
+                  )}
+                  <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
+                    Certified Format
+                  </span>
+                </div>
               </div>
-              <div className="bg-white rounded-b-xl shadow-xl overflow-hidden border border-slate-300">
+              <div id="invoice-live-preview-area" className="bg-white rounded-b-xl shadow-xl overflow-hidden border border-slate-300">
                 <SatyamPharmaGstInvoice
                   settings={settings}
                   isLivePreview={true}
@@ -1981,7 +2509,12 @@ export default function PrincePharmaApp() {
           <div className="space-y-4">
             <div className={`${themeClasses.card} p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
               <div>
-                <h3 className="font-bold text-base">Physical Stock & FEFO Batch Ledger</h3>
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <span>Physical Stock & FEFO Batch Ledger</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono px-2 py-0.5 rounded font-bold">
+                    Admin Controlled
+                  </span>
+                </h3>
                 <p className={`text-xs ${themeClasses.secondaryText}`}>
                   Single inventory pool for both retail and wholesale channels. Depletion occurs strictly by earliest expiry date.
                 </p>
@@ -2007,74 +2540,231 @@ export default function PrincePharmaApp() {
               </div>
             </div>
 
-            {/* Stock Table */}
-            <div className={`${themeClasses.card} rounded-xl overflow-hidden`}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className={`${themeClasses.tableHeader} text-[10px] uppercase font-mono tracking-wider`}>
-                    <tr>
-                      <th className="py-2.5 px-3">Product Name</th>
-                      <th className="py-2.5 px-2">Batch No</th>
-                      <th className="py-2.5 px-2">Expiry Date</th>
-                      <th className="py-2.5 px-2 text-right">Cost Rate</th>
-                      <th className="py-2.5 px-2 text-right">Retail MRP</th>
-                      <th className="py-2.5 px-2 text-right">Wholesale Rate</th>
-                      <th className="py-2.5 px-2 text-center">Sellable Stock</th>
-                      <th className="py-2.5 px-2 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y font-sans">
-                    {batches.map((b) => {
-                      const prod = products.find((p) => p.id === b.productId);
-                      const isExpired = new Date(b.expiryDate) < new Date();
-                      return (
-                        <tr key={b.id} className={themeClasses.tableRowHover}>
-                          <td className="py-2.5 px-3">
-                            <div className="font-bold">{prod?.name || 'Unknown'}</div>
-                            <div className={`text-[10px] ${themeClasses.secondaryText} font-mono`}>
-                              Rack: {prod?.rackLocation} • {prod?.packSize}{prod?.packUnit} • {prod?.schedule}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-2 font-mono font-bold text-emerald-600">
-                            {b.batchNumber}
-                          </td>
-                          <td className="py-2.5 px-2 font-mono">
-                            <span className={isExpired ? 'text-rose-600 font-bold' : ''}>
-                              {b.expiryDate}
-                            </span>
-                          </td>
-                          <td className={`py-2.5 px-2 text-right font-mono ${themeClasses.secondaryText}`}>
-                            ₹{Number(b.purchaseRate).toFixed(2)}
-                          </td>
-                          <td className="py-2.5 px-2 text-right font-mono font-semibold">
-                            ₹{b.mrp.toFixed(2)}
-                          </td>
-                          <td className="py-2.5 px-2 text-right font-mono text-teal-600 font-bold">
-                            ₹{b.wholesalePrice.toFixed(2)}
-                          </td>
-                          <td className="py-2.5 px-2 text-center font-mono">
-                            <strong className={b.sellableStock > 0 ? 'text-sm' : 'text-slate-400'}>
-                              {b.sellableStock}
-                            </strong>
-                          </td>
-                          <td className="py-2.5 px-2 text-center">
-                            {isExpired ? (
-                              <span className="text-[10px] bg-rose-50 text-rose-700 border border-rose-300 px-2 py-0.5 rounded font-mono font-bold">
-                                EXPIRED (LOCKED)
-                              </span>
-                            ) : (
-                              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 rounded font-mono font-semibold">
-                                ACTIVE FEFO
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            {/* Inventory View Toggle & Instant Search */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className={`flex ${isLight ? 'bg-slate-100 border border-slate-300' : 'bg-slate-900 border border-slate-700'} rounded-lg p-0.5 text-xs font-semibold`}>
+                <button
+                  onClick={() => setInventoryViewMode('batches')}
+                  className={`px-3 py-1.5 rounded transition cursor-pointer flex items-center gap-1.5 ${
+                    inventoryViewMode === 'batches'
+                      ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5" />
+                  <span>FEFO Batch Ledger ({batches.length})</span>
+                </button>
+                <button
+                  onClick={() => setInventoryViewMode('products')}
+                  className={`px-3 py-1.5 rounded transition cursor-pointer flex items-center gap-1.5 ${
+                    inventoryViewMode === 'products'
+                      ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Product Catalog & Pricing ({products.length})</span>
+                </button>
+              </div>
+
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={inventorySearchTerm}
+                  onChange={(e) => setInventorySearchTerm(e.target.value)}
+                  placeholder="Search medicine, salt, batch, rack..."
+                  className={`w-full pl-8 pr-3 py-1.5 ${themeClasses.input} rounded-lg text-xs`}
+                />
               </div>
             </div>
+
+            {/* View Mode 1: FEFO Batch Ledger */}
+            {inventoryViewMode === 'batches' && (
+              <div className={`${themeClasses.card} rounded-xl overflow-hidden`}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className={`${themeClasses.tableHeader} text-[10px] uppercase font-mono tracking-wider`}>
+                      <tr>
+                        <th className="py-2.5 px-3">Product Name</th>
+                        <th className="py-2.5 px-2">Batch No</th>
+                        <th className="py-2.5 px-2">Expiry Date</th>
+                        <th className="py-2.5 px-2 text-right">Cost Rate</th>
+                        <th className="py-2.5 px-2 text-right">Retail MRP</th>
+                        <th className="py-2.5 px-2 text-right">Wholesale Rate</th>
+                        <th className="py-2.5 px-2 text-center">Sellable Stock</th>
+                        <th className="py-2.5 px-2 text-center">Status</th>
+                        <th className="py-2.5 px-2 text-center">Admin Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-sans">
+                      {batches
+                        .filter((b) => {
+                          if (!inventorySearchTerm.trim()) return true;
+                          const t = inventorySearchTerm.toLowerCase();
+                          const p = products.find((pr) => pr.id === b.productId);
+                          return (
+                            b.batchNumber.toLowerCase().includes(t) ||
+                            (p?.name || '').toLowerCase().includes(t) ||
+                            (p?.genericName || '').toLowerCase().includes(t) ||
+                            (p?.rackLocation || '').toLowerCase().includes(t)
+                          );
+                        })
+                        .map((b) => {
+                          const prod = products.find((p) => p.id === b.productId);
+                          const isExpired = new Date(b.expiryDate) < new Date();
+                          return (
+                            <tr key={b.id} className={themeClasses.tableRowHover}>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold">{prod?.name || 'Unknown'}</div>
+                                <div className={`text-[10px] ${themeClasses.secondaryText} font-mono`}>
+                                  Rack: {prod?.rackLocation} • {prod?.packSize}{prod?.packUnit} • {prod?.schedule}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-2 font-mono font-bold text-emerald-600">
+                                {b.batchNumber}
+                              </td>
+                              <td className="py-2.5 px-2 font-mono">
+                                <span className={isExpired ? 'text-rose-600 font-bold' : ''}>
+                                  {b.expiryDate}
+                                </span>
+                              </td>
+                              <td className={`py-2.5 px-2 text-right font-mono ${themeClasses.secondaryText}`}>
+                                ₹{Number(b.purchaseRate).toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-mono font-semibold">
+                                ₹{b.mrp.toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-mono text-teal-600 font-bold">
+                                ₹{b.wholesalePrice.toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono">
+                                <strong className={b.sellableStock > 0 ? 'text-sm' : 'text-slate-400'}>
+                                  {b.sellableStock}
+                                </strong>
+                              </td>
+                              <td className="py-2.5 px-2 text-center">
+                                {isExpired ? (
+                                  <span className="text-[10px] bg-rose-50 text-rose-700 border border-rose-300 px-2 py-0.5 rounded font-mono font-bold">
+                                    EXPIRED (LOCKED)
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-300 px-2 py-0.5 rounded font-mono font-semibold">
+                                    ACTIVE FEFO
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-2 text-center">
+                                <button
+                                  onClick={() => setEditingBatch(b)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded text-[11px] font-semibold transition cursor-pointer"
+                                  title="Edit batch pricing, stock quantity or expiry"
+                                >
+                                  <Pencil className="w-3 h-3 text-amber-600" />
+                                  <span>Edit</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* View Mode 2: Product Master Catalog & Default Prices */}
+            {inventoryViewMode === 'products' && (
+              <div className={`${themeClasses.card} rounded-xl overflow-hidden`}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className={`${themeClasses.tableHeader} text-[10px] uppercase font-mono tracking-wider`}>
+                      <tr>
+                        <th className="py-2.5 px-3">Trade Name & Brand</th>
+                        <th className="py-2.5 px-2">Generic / Salt Formula</th>
+                        <th className="py-2.5 px-2">Category & Pack</th>
+                        <th className="py-2.5 px-2">Rack Location</th>
+                        <th className="py-2.5 px-2">HSN / GST</th>
+                        <th className="py-2.5 px-2 text-right">Retail MRP</th>
+                        <th className="py-2.5 px-2 text-right">Wholesale Rate</th>
+                        <th className="py-2.5 px-2 text-center">Total Stock</th>
+                        <th className="py-2.5 px-2 text-center">Admin Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-sans">
+                      {products
+                        .filter((p) => {
+                          if (!inventorySearchTerm.trim()) return true;
+                          const t = inventorySearchTerm.toLowerCase();
+                          return (
+                            p.name.toLowerCase().includes(t) ||
+                            p.genericName.toLowerCase().includes(t) ||
+                            p.rackLocation.toLowerCase().includes(t) ||
+                            p.manufacturer.toLowerCase().includes(t)
+                          );
+                        })
+                        .map((prod) => {
+                          const totalStock = batches
+                            .filter((b) => b.productId === prod.id && b.status === 'active')
+                            .reduce((sum, b) => sum + b.sellableStock, 0);
+                          return (
+                            <tr key={prod.id} className={themeClasses.tableRowHover}>
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">{prod.name}</div>
+                                <div className={`text-[10px] ${themeClasses.secondaryText}`}>
+                                  {prod.manufacturer || prod.brand}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-2 font-mono text-slate-600 dark:text-slate-300">
+                                {prod.genericName}
+                              </td>
+                              <td className="py-2.5 px-2 uppercase font-mono text-[10px]">
+                                {prod.category} • {prod.packSize} {prod.packUnit}
+                              </td>
+                              <td className="py-2.5 px-2 font-mono text-emerald-700 font-bold">
+                                {prod.rackLocation}
+                              </td>
+                              <td className="py-2.5 px-2 font-mono text-[10px]">
+                                {prod.hsnCode} ({prod.gstRate}%)
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-600">
+                                ₹{prod.mrp.toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-mono font-bold text-blue-600">
+                                ₹{prod.defaultWholesalePrice.toFixed(2)}
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono">
+                                <strong className={totalStock > 0 ? 'text-sm font-bold' : 'text-slate-400'}>
+                                  {totalStock}
+                                </strong>
+                              </td>
+                              <td className="py-2.5 px-2 text-center">
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    onClick={() => setEditingProduct(prod)}
+                                    className="p-1 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded text-[11px] font-semibold transition cursor-pointer"
+                                    title="Edit master trade name, generic formula, MRP, wholesale price"
+                                  >
+                                    <Pencil className="w-3 h-3 text-amber-600 inline mr-0.5" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProduct(prod.id)}
+                                    className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition cursor-pointer"
+                                    title="Delete product"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2085,18 +2775,35 @@ export default function PrincePharmaApp() {
           <div className="space-y-4">
             <div className={`${themeClasses.card} p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
               <div>
-                <h3 className="font-bold text-base">Inward Purchases & Goods Receipt</h3>
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <span>Inward Purchases & Goods Receipt</span>
+                  <span className="text-[10px] bg-blue-100 text-blue-800 border border-blue-300 font-mono px-2 py-0.5 rounded font-bold">
+                    FEFO Auto-Stock
+                  </span>
+                </h3>
                 <p className={`text-xs ${themeClasses.secondaryText}`}>
                   Stock received from authorized pharmaceutical distributors. Inward purchases auto-update batch inventory and supplier payables.
                 </p>
               </div>
-              <button
-                onClick={() => setShowAddBatchModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Record New Purchase</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    setShowAutoInwardModal(true);
+                    if (autoInwardItems.length === 0) handleLoadSatyamBillItems();
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>⚡ Auto-Import Distributor Bill (OCR / Photo)</span>
+                </button>
+                <button
+                  onClick={() => setShowAddBatchModal(true)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 ${isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-slate-800 text-slate-200'} rounded-lg text-xs font-semibold border ${themeClasses.subtleBorder} transition cursor-pointer`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Single Batch Entry</span>
+                </button>
+              </div>
             </div>
 
             <div className={`${themeClasses.card} rounded-xl overflow-hidden`}>
@@ -3981,6 +4688,702 @@ export default function PrincePharmaApp() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4.9. MODAL: ADMIN / OWNER EDIT BATCH & PRICING */}
+      {editingBatch && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
+          <div className={`${isLight ? 'bg-white text-slate-900' : 'bg-[#0f172a] text-white'} border ${themeClasses.subtleBorder} rounded-2xl max-w-lg w-full p-5 space-y-4 my-8 shadow-2xl`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${themeClasses.subtleBorder}`}>
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-amber-600" />
+                <span>Edit Batch Details, Stock & Pricing</span>
+              </h3>
+              <button onClick={() => setEditingBatch(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {(() => {
+              const currentProd = products.find((p) => p.id === editingBatch.productId);
+              return (
+                <form onSubmit={handleSaveBatchEdit} className="space-y-3 text-xs">
+                  <div className={`p-3 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} space-y-1`}>
+                    <div className="font-bold text-sm text-slate-900 dark:text-white">{currentProd?.name}</div>
+                    <div className={`text-[11px] ${themeClasses.secondaryText}`}>
+                      Salt: {currentProd?.genericName} • Rack: {currentProd?.rackLocation} • {currentProd?.packSize}{currentProd?.packUnit}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={themeClasses.secondaryText}>Batch Number:</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingBatch.batchNumber}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, batchNumber: e.target.value.toUpperCase() })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono font-bold`}
+                      />
+                    </div>
+                    <div>
+                      <label className={themeClasses.secondaryText}>Expiry Date (YYYY-MM-DD):</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingBatch.expiryDate}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, expiryDate: e.target.value })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                      />
+                    </div>
+                    <div>
+                      <label className={themeClasses.secondaryText}>Sellable Stock Qty:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={editingBatch.sellableStock}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, sellableStock: Number(e.target.value) })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono font-bold text-emerald-600`}
+                      />
+                    </div>
+                    <div>
+                      <label className={themeClasses.secondaryText}>Purchase Cost Rate (₹):</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={editingBatch.purchaseRate}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, purchaseRate: Number(e.target.value) })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                      />
+                    </div>
+                    <div>
+                      <label className={themeClasses.secondaryText}>Retail MRP (₹):</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={editingBatch.mrp}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, mrp: Number(e.target.value), retailPrice: Number(e.target.value) })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono font-bold`}
+                      />
+                    </div>
+                    <div>
+                      <label className={themeClasses.secondaryText}>Wholesale Price (₹):</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={editingBatch.wholesalePrice}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, wholesalePrice: Number(e.target.value) })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono text-teal-600 font-bold`}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={themeClasses.secondaryText}>Batch Status:</label>
+                      <select
+                        value={editingBatch.status}
+                        onChange={(e) => setEditingBatch({ ...editingBatch, status: e.target.value as any })}
+                        className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2`}
+                      >
+                        <option value="active">Active (Available for POS & FEFO Dispatch)</option>
+                        <option value="quarantine">Quarantine (Locked / Quality Check)</option>
+                        <option value="expired">Expired (Locked / Ready for Supplier Return)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className={`pt-3 border-t ${themeClasses.subtleBorder} flex justify-end gap-2`}>
+                    <button
+                      type="button"
+                      onClick={() => setEditingBatch(null)}
+                      className={`px-3 py-1.5 ${isLight ? 'bg-slate-100 text-slate-700' : 'bg-slate-800 text-slate-300'} rounded-lg cursor-pointer`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold cursor-pointer"
+                    >
+                      Save Batch & Pricing Changes
+                    </button>
+                  </div>
+                </form>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* 4.10. MODAL: ADMIN / OWNER EDIT PRODUCT MASTER */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
+          <div className={`${isLight ? 'bg-white text-slate-900' : 'bg-[#0f172a] text-white'} border ${themeClasses.subtleBorder} rounded-2xl max-w-lg w-full p-5 space-y-4 my-8 shadow-2xl`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${themeClasses.subtleBorder}`}>
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-emerald-600" />
+                <span>Edit Product Master & Default Pricing</span>
+              </h3>
+              <button onClick={() => setEditingProduct(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className={themeClasses.secondaryText}>Medicine Trade Name:</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-bold`}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className={themeClasses.secondaryText}>Salt / Generic Composition (API):</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingProduct.genericName}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, genericName: e.target.value })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Brand / Manufacturer:</label>
+                  <input
+                    type="text"
+                    value={editingProduct.manufacturer}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, manufacturer: e.target.value })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Category & Dosage:</label>
+                  <select
+                    value={editingProduct.category}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value as any })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2`}
+                  >
+                    <option value="tablet">Tablet</option>
+                    <option value="syrup">Syrup</option>
+                    <option value="capsule">Capsule</option>
+                    <option value="injection">Injection</option>
+                    <option value="ointment">Ointment</option>
+                    <option value="drops">Drops</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Pack Size & Unit:</label>
+                  <div className="flex gap-1.5 mt-1">
+                    <input
+                      type="number"
+                      value={editingProduct.packSize}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, packSize: Number(e.target.value) })}
+                      className={`w-16 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                    />
+                    <input
+                      type="text"
+                      value={editingProduct.packUnit}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, packUnit: e.target.value })}
+                      className={`flex-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Rack / Shelf Location:</label>
+                  <input
+                    type="text"
+                    value={editingProduct.rackLocation}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, rackLocation: e.target.value })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono font-bold text-emerald-600`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Default Retail MRP (₹):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={editingProduct.mrp}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, mrp: Number(e.target.value), defaultRetailPrice: Number(e.target.value) })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono font-bold`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Default Wholesale Price (₹):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={editingProduct.defaultWholesalePrice}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, defaultWholesalePrice: Number(e.target.value) })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono text-blue-600 font-bold`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>HSN Code:</label>
+                  <input
+                    type="text"
+                    value={editingProduct.hsnCode}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, hsnCode: e.target.value })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>GST Slab %:</label>
+                  <select
+                    value={editingProduct.gstRate}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, gstRate: Number(e.target.value) })}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                  >
+                    <option value={5}>5% (Common Formulations)</option>
+                    <option value={12}>12% (Standard Medicines)</option>
+                    <option value={18}>18% (Cosmetics / Soaps)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className={`pt-3 border-t ${themeClasses.subtleBorder} flex justify-between items-center`}>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteProduct(editingProduct.id)}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProduct(null)}
+                    className={`px-3 py-1.5 ${isLight ? 'bg-slate-100 text-slate-700' : 'bg-slate-800 text-slate-300'} rounded-lg cursor-pointer`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold cursor-pointer"
+                  >
+                    Save Product Master
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4.11. MODAL: AUTOMATED DISTRIBUTOR BILL INWARD & OCR SCANNER */}
+      {showAutoInwardModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6 overflow-y-auto">
+          <div className={`${isLight ? 'bg-white text-slate-900' : 'bg-[#0f172a] text-white'} border ${themeClasses.subtleBorder} rounded-2xl max-w-5xl w-full p-5 space-y-4 my-8 shadow-2xl max-h-[92vh] flex flex-col`}>
+            {/* Header */}
+            <div className={`flex items-start justify-between pb-3 border-b ${themeClasses.subtleBorder} shrink-0`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base flex items-center gap-2">
+                    Automated Distributor Bill Inward & Stock Entry
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      Bulk Auto-Stock
+                    </span>
+                  </h3>
+                  <p className={`text-xs ${themeClasses.secondaryText}`}>
+                    Upload distributor invoice photo, PDF or CSV — auto-populates all medicines into stock in 1 click!
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowAutoInwardModal(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Presets & File Upload Bar */}
+            <div className={`p-3 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} shrink-0 space-y-3`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Camera className="w-4 h-4 text-emerald-600" />
+                  Auto-Extract Items from Distributor Bills:
+                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleLoadSatyamBillItems}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>⚡ Load Photographed Satyam Bill (#A012147 - 8 Medicines)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLoadCiplaBillItems}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Boxes className="w-3.5 h-3.5" />
+                    <span>⚡ Load Cipla Restock (3 Medicines)</span>
+                  </button>
+                  <label className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer">
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Upload Photo / PDF Bill</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.csv"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          notify(`Scanning "${e.target.files[0].name}" via OCR...`);
+                          setTimeout(() => {
+                            handleLoadSatyamBillItems();
+                            notify(`Extracted 8 medicines from "${e.target.files[0].name}" successfully!`);
+                          }, 800);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Distributor Metadata Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs">
+                <div>
+                  <label className={themeClasses.secondaryText}>Distributor / Wholesaler:</label>
+                  <select
+                    value={autoInwardSupplierId}
+                    onChange={(e) => setAutoInwardSupplierId(e.target.value)}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-medium`}
+                  >
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Supplier Invoice Number:</label>
+                  <input
+                    type="text"
+                    value={autoInwardInvoiceNo}
+                    onChange={(e) => setAutoInwardInvoiceNo(e.target.value)}
+                    placeholder="e.g. A012147"
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono font-bold`}
+                  />
+                </div>
+                <div>
+                  <label className={themeClasses.secondaryText}>Inward Date:</label>
+                  <input
+                    type="date"
+                    value={autoInwardDate}
+                    onChange={(e) => setAutoInwardDate(e.target.value)}
+                    className={`w-full mt-1 ${themeClasses.input} rounded-lg p-2 font-mono`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Editable Spreadsheet Review Grid */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className={`${themeClasses.tableHeader} text-[10px] uppercase font-mono tracking-wider sticky top-0`}>
+                  <tr>
+                    <th className="py-2.5 px-2">#</th>
+                    <th className="py-2.5 px-2 min-w-[160px]">Medicine Name</th>
+                    <th className="py-2.5 px-2 w-16">Pack</th>
+                    <th className="py-2.5 px-2 w-24">Batch No</th>
+                    <th className="py-2.5 px-2 w-24">Exp (YYYY-MM)</th>
+                    <th className="py-2.5 px-2 w-16 text-right">Qty</th>
+                    <th className="py-2.5 px-2 w-14 text-right">Free</th>
+                    <th className="py-2.5 px-2 w-20 text-right">Cost (₹)</th>
+                    <th className="py-2.5 px-2 w-20 text-right">MRP (₹)</th>
+                    <th className="py-2.5 px-2 w-20 text-right">WS Rate (₹)</th>
+                    <th className="py-2.5 px-2 w-16 text-right">Total (₹)</th>
+                    <th className="py-2.5 px-2 text-center w-10">Del</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y font-sans">
+                  {autoInwardItems.map((item, idx) => {
+                    const rowTotal = item.purchaseRate * item.quantity;
+                    return (
+                      <tr key={item.id} className={themeClasses.tableRowHover}>
+                        <td className="py-2 px-2 font-mono text-slate-400">{idx + 1}</td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={item.productName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, productName: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-semibold text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={item.pack}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, pack: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={item.batchNumber}
+                            onChange={(e) => {
+                              const val = e.target.value.toUpperCase();
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, batchNumber: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono font-bold text-xs uppercase`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={item.expiryDate}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, expiryDate: val } : it)));
+                            }}
+                            placeholder="2028-02"
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, quantity: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono font-bold text-right text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={item.freeQuantity}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, freeQuantity: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono text-right text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.purchaseRate}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, purchaseRate: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono text-right text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.mrp}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, mrp: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono font-bold text-right text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.wholesalePrice}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setAutoInwardItems(autoInwardItems.map((it) => (it.id === item.id ? { ...it, wholesalePrice: val } : it)));
+                            }}
+                            className={`w-full ${themeClasses.input} rounded p-1 font-mono text-teal-600 font-bold text-right text-xs`}
+                          />
+                        </td>
+                        <td className="py-2 px-2 font-mono font-bold text-right">
+                          ₹{rowTotal.toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setAutoInwardItems(autoInwardItems.filter((it) => it.id !== item.id))}
+                            className="p-1 text-rose-500 hover:text-rose-700 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {autoInwardItems.length === 0 && (
+                    <tr>
+                      <td colSpan={12} className="py-8 text-center text-slate-400">
+                        No medicines loaded. Click "⚡ Load Satyam Bill" or upload invoice photo above to auto-populate.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bottom Actions & Live Calculation Bar */}
+            <div className={`p-3 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900'} shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3`}>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = `manual-line-${Date.now()}`;
+                    setAutoInwardItems([
+                      ...autoInwardItems,
+                      {
+                        id: newId,
+                        productName: 'New Medicine',
+                        pack: '10T',
+                        quantity: 10,
+                        freeQuantity: 0,
+                        purchaseRate: 50,
+                        mrp: 75,
+                        wholesalePrice: 60,
+                        batchNumber: `BAT-${Date.now().toString().slice(-4)}`,
+                        expiryDate: '2028-12-01',
+                        gstRate: 12,
+                        hsnCode: '30049099',
+                        discountPercent: 0,
+                      },
+                    ]);
+                  }}
+                  className={`px-3 py-1.5 ${isLight ? 'bg-white hover:bg-slate-100 text-slate-800' : 'bg-slate-800 text-slate-200'} rounded-lg text-xs font-semibold border ${themeClasses.subtleBorder} flex items-center gap-1.5 cursor-pointer`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Medicine Line</span>
+                </button>
+                <div className="text-xs font-mono">
+                  <span className={themeClasses.secondaryText}>Draft: </span>
+                  <strong>{autoInwardItems.length} items</strong> ({autoInwardItems.reduce((s, it) => s + it.quantity + (it.freeQuantity || 0), 0)} units)
+                </div>
+              </div>
+
+              {(() => {
+                const sub = autoInwardItems.reduce((s, it) => s + it.purchaseRate * it.quantity, 0);
+                const gst = autoInwardItems.reduce((s, it) => s + (it.purchaseRate * it.quantity * it.gstRate) / 100, 0);
+                const grand = sub + gst;
+                return (
+                  <div className="flex items-center gap-4">
+                    <div className="text-right font-mono text-xs">
+                      <div><span className={themeClasses.secondaryText}>Taxable:</span> ₹{sub.toFixed(2)} | <span className={themeClasses.secondaryText}>GST:</span> ₹{gst.toFixed(2)}</div>
+                      <div className="text-emerald-600 font-black text-sm">Invoice Grand Total: ₹{grand.toFixed(2)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleConfirmAutoInward}
+                      disabled={autoInwardItems.length === 0}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-950/20 flex items-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Inward All ({autoInwardItems.length}) Into Stock</span>
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4.12. MODAL: WHATSAPP SHARE INFO & HELP MODAL */}
+      {whatsAppShareInfo && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
+          <div className={`${isLight ? 'bg-white text-slate-900' : 'bg-[#0f172a] text-white'} border ${themeClasses.subtleBorder} rounded-2xl max-w-md w-full p-5 space-y-4 my-8 shadow-2xl`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${themeClasses.subtleBorder}`}>
+              <h3 className="font-bold text-sm flex items-center gap-2 text-emerald-600">
+                <Share2 className="w-4 h-4" />
+                <span>WhatsApp Bill Sharing Ready</span>
+              </h3>
+              <button onClick={() => setWhatsAppShareInfo(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className={`p-3 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-emerald-50/50' : 'bg-emerald-950/30'} space-y-1`}>
+                <div className="font-bold text-emerald-800 dark:text-emerald-300">
+                  Invoice #{whatsAppShareInfo.invoiceNumber}
+                </div>
+                <div className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                  File: <span className="font-bold">{whatsAppShareInfo.fileName}</span> (Downloaded to your device)
+                </div>
+                <div className="font-mono font-black text-emerald-700 text-sm">
+                  Grand Total: ₹{whatsAppShareInfo.total.toFixed(2)}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>On Mobile Devices (Android / iPhone):</strong>
+                    <p className={themeClasses.secondaryText}>WhatsApp opens automatically with the PDF file attached directly!</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>On Desktop (WhatsApp Web):</strong>
+                    <p className={themeClasses.secondaryText}>The full bill image is also copied to your clipboard. Simply press <strong>Ctrl+V</strong> in the WhatsApp chat to send the authentic bill image instantly, or attach the downloaded PDF!</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`pt-3 border-t ${themeClasses.subtleBorder} flex justify-end gap-2`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const waUrl = whatsAppShareInfo.phone.length >= 10
+                      ? `https://wa.me/91${whatsAppShareInfo.phone.slice(-10)}`
+                      : `https://wa.me/`;
+                    window.open(waUrl, '_blank');
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open WhatsApp</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWhatsAppShareInfo(null)}
+                  className={`px-4 py-1.5 ${isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-slate-800 text-slate-200'} rounded-lg font-semibold cursor-pointer`}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

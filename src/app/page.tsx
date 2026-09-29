@@ -1378,7 +1378,7 @@ export default function PrincePharmaApp() {
                         />
                       </div>
                       <div>
-                        <label className={`text-[11px] ${themeClasses.secondaryText} font-medium`}>Mobile (WhatsApp Invoice):</label>
+                        <label className={`text-[11px] ${themeClasses.secondaryText} font-medium`}>Mobile Number:</label>
                         <input
                           type="tel"
                           value={walkinPhone}

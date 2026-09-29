@@ -2,7 +2,7 @@ export interface Product {
   id: string;
   name: string;
   brand: string;
-  genericName: string;
+  genericName: string; // Salt composition
   manufacturer: string;
   category: 'tablet' | 'syrup' | 'injection' | 'capsule' | 'ointment' | 'drops';
   packSize: number;
@@ -173,6 +173,7 @@ export interface Invoice {
   customerPhone?: string;
   customerGstin?: string;
   customerDl?: string;
+  doctorName?: string;
   paymentMethod: 'cash' | 'upi' | 'card' | 'credit' | 'split';
   paymentStatus: 'paid' | 'unpaid' | 'partial';
   subtotal: number;
@@ -204,6 +205,7 @@ export interface PharmacySettings {
   wholesalePrefix: string;
   nearExpiryDays: number;
   defaultPrintFormat: 'A4' | '80mm';
+  theme: 'light' | 'dark';
 }
 
 export const INITIAL_SETTINGS: PharmacySettings = {
@@ -223,6 +225,7 @@ export const INITIAL_SETTINGS: PharmacySettings = {
   wholesalePrefix: 'WS-',
   nearExpiryDays: 90,
   defaultPrintFormat: 'A4',
+  theme: 'light',
 };
 
 export const INITIAL_PRODUCTS: Product[] = [
@@ -243,6 +246,48 @@ export const INITIAL_PRODUCTS: Product[] = [
     defaultWholesalePrice: 27.00,
     reorderLevel: 25,
     rackLocation: 'Rack A-01',
+    schedule: 'OTC',
+    prescriptionRequired: false,
+    isActive: true,
+  },
+  {
+    id: 'prod-1b',
+    name: 'Crocin 650 Advance Tablet',
+    brand: 'Crocin',
+    genericName: 'Paracetamol IP 650mg',
+    manufacturer: 'GlaxoSmithKline (GSK)',
+    category: 'tablet',
+    packSize: 15,
+    packUnit: 'strip',
+    barcode: '8901043001122',
+    hsnCode: '30049060',
+    gstRate: 12,
+    mrp: 34.00,
+    defaultRetailPrice: 34.00,
+    defaultWholesalePrice: 27.50,
+    reorderLevel: 20,
+    rackLocation: 'Rack A-02',
+    schedule: 'OTC',
+    prescriptionRequired: false,
+    isActive: true,
+  },
+  {
+    id: 'prod-1c',
+    name: 'Calpol 650 Tablet',
+    brand: 'Calpol',
+    genericName: 'Paracetamol IP 650mg',
+    manufacturer: 'GSK Consumer Healthcare',
+    category: 'tablet',
+    packSize: 15,
+    packUnit: 'strip',
+    barcode: '8901043009988',
+    hsnCode: '30049060',
+    gstRate: 12,
+    mrp: 33.50,
+    defaultRetailPrice: 33.50,
+    defaultWholesalePrice: 26.80,
+    reorderLevel: 20,
+    rackLocation: 'Rack A-03',
     schedule: 'OTC',
     prescriptionRequired: false,
     isActive: true,
@@ -269,6 +314,27 @@ export const INITIAL_PRODUCTS: Product[] = [
     isActive: true,
   },
   {
+    id: 'prod-2b',
+    name: 'Moxikind-CV 625 Tablet',
+    brand: 'Moxikind',
+    genericName: 'Amoxicillin 500mg + Clavulanic Acid 125mg',
+    manufacturer: 'Mankind Pharma Ltd',
+    category: 'tablet',
+    packSize: 10,
+    packUnit: 'strip',
+    barcode: '8902043004455',
+    hsnCode: '30041090',
+    gstRate: 12,
+    mrp: 195.00,
+    defaultRetailPrice: 195.00,
+    defaultWholesalePrice: 160.00,
+    reorderLevel: 15,
+    rackLocation: 'Rack B-04',
+    schedule: 'H1',
+    prescriptionRequired: true,
+    isActive: true,
+  },
+  {
     id: 'prod-3',
     name: 'Pan 40 Tablet',
     brand: 'Pan',
@@ -290,6 +356,27 @@ export const INITIAL_PRODUCTS: Product[] = [
     isActive: true,
   },
   {
+    id: 'prod-3b',
+    name: 'Pantocid 40 Tablet',
+    brand: 'Pantocid',
+    genericName: 'Pantoprazole Sodium 40mg',
+    manufacturer: 'Sun Pharmaceutical Industries',
+    category: 'tablet',
+    packSize: 15,
+    packUnit: 'strip',
+    barcode: '8901111007788',
+    hsnCode: '30049099',
+    gstRate: 12,
+    mrp: 162.00,
+    defaultRetailPrice: 162.00,
+    defaultWholesalePrice: 130.00,
+    reorderLevel: 25,
+    rackLocation: 'Rack C-03',
+    schedule: 'H',
+    prescriptionRequired: true,
+    isActive: true,
+  },
+  {
     id: 'prod-4',
     name: 'Azithral 500 Tablet',
     brand: 'Azithral',
@@ -306,6 +393,27 @@ export const INITIAL_PRODUCTS: Product[] = [
     defaultWholesalePrice: 108.00,
     reorderLevel: 15,
     rackLocation: 'Rack B-04',
+    schedule: 'H',
+    prescriptionRequired: true,
+    isActive: true,
+  },
+  {
+    id: 'prod-4b',
+    name: 'Azee 500 Tablet',
+    brand: 'Azee',
+    genericName: 'Azithromycin 500mg',
+    manufacturer: 'Cipla Ltd',
+    category: 'tablet',
+    packSize: 5,
+    packUnit: 'strip',
+    barcode: '8901115003322',
+    hsnCode: '30042099',
+    gstRate: 12,
+    mrp: 132.00,
+    defaultRetailPrice: 132.00,
+    defaultWholesalePrice: 105.00,
+    reorderLevel: 20,
+    rackLocation: 'Rack B-05',
     schedule: 'H',
     prescriptionRequired: true,
     isActive: true,
@@ -355,12 +463,12 @@ export const INITIAL_PRODUCTS: Product[] = [
 ];
 
 export const INITIAL_BATCHES: Batch[] = [
-  // Product 1: Dolo 650 (2 active batches with differing expiry dates for FEFO demonstration)
+  // Product 1: Dolo 650 (2 batches for FEFO)
   {
     id: 'bat-101',
     productId: 'prod-1',
     batchNumber: 'DL-24A01',
-    expiryDate: '2026-12-31', // Expiring earlier -> Must be consumed first
+    expiryDate: '2026-12-31',
     purchaseDate: '2025-01-10',
     purchaseRate: 21.00,
     mrp: 33.60,
@@ -376,7 +484,7 @@ export const INITIAL_BATCHES: Batch[] = [
     id: 'bat-102',
     productId: 'prod-1',
     batchNumber: 'DL-25C09',
-    expiryDate: '2027-08-31', // Expiring later -> Consumed second
+    expiryDate: '2027-08-31',
     purchaseDate: '2025-08-15',
     purchaseRate: 21.50,
     mrp: 33.60,
@@ -386,6 +494,23 @@ export const INITIAL_BATCHES: Batch[] = [
     sellableStock: 200,
     damagedStock: 0,
     initialStock: 200,
+    status: 'active',
+  },
+  // Product 1b: Crocin 650
+  {
+    id: 'bat-crocin-01',
+    productId: 'prod-1b',
+    batchNumber: 'CRC-9901',
+    expiryDate: '2027-04-30',
+    purchaseDate: '2025-05-10',
+    purchaseRate: 22.00,
+    mrp: 34.00,
+    retailPrice: 34.00,
+    wholesalePrice: 27.50,
+    supplierId: 'sup-2',
+    sellableStock: 120,
+    damagedStock: 0,
+    initialStock: 150,
     status: 'active',
   },
   // Product 2: Augmentin 625 Duo
@@ -405,12 +530,29 @@ export const INITIAL_BATCHES: Batch[] = [
     initialStock: 100,
     status: 'active',
   },
+  // Product 2b: Moxikind-CV 625
+  {
+    id: 'bat-mox-01',
+    productId: 'prod-2b',
+    batchNumber: 'MOX-4412',
+    expiryDate: '2027-05-31',
+    purchaseDate: '2025-06-01',
+    purchaseRate: 135.00,
+    mrp: 195.00,
+    retailPrice: 195.00,
+    wholesalePrice: 160.00,
+    supplierId: 'sup-3',
+    sellableStock: 75,
+    damagedStock: 0,
+    initialStock: 100,
+    status: 'active',
+  },
   // Product 3: Pan 40
   {
     id: 'bat-301',
     productId: 'prod-3',
     batchNumber: 'PAN-7742',
-    expiryDate: '2026-11-30', // Near expiry
+    expiryDate: '2026-11-30',
     purchaseDate: '2024-12-05',
     purchaseRate: 98.00,
     mrp: 155.00,
@@ -420,6 +562,23 @@ export const INITIAL_BATCHES: Batch[] = [
     sellableStock: 45,
     damagedStock: 0,
     initialStock: 120,
+    status: 'active',
+  },
+  // Product 3b: Pantocid 40
+  {
+    id: 'bat-pnt-01',
+    productId: 'prod-3b',
+    batchNumber: 'PNT-3310',
+    expiryDate: '2027-07-31',
+    purchaseDate: '2025-07-15',
+    purchaseRate: 102.00,
+    mrp: 162.00,
+    retailPrice: 162.00,
+    wholesalePrice: 130.00,
+    supplierId: 'sup-1',
+    sellableStock: 90,
+    damagedStock: 0,
+    initialStock: 100,
     status: 'active',
   },
   // Product 4: Azithral 500
@@ -461,7 +620,7 @@ export const INITIAL_BATCHES: Batch[] = [
     id: 'bat-exp-01',
     productId: 'prod-1',
     batchNumber: 'DL-21EXP',
-    expiryDate: '2023-05-31', // Expired
+    expiryDate: '2023-05-31',
     purchaseDate: '2021-06-01',
     purchaseRate: 18.00,
     mrp: 29.50,
@@ -538,13 +697,13 @@ export const INITIAL_CUSTOMERS: Customer[] = [
 export const INITIAL_CUSTOMER_PRICES: CustomerProductPrice[] = [
   {
     customerId: 'cust-krishna',
-    productId: 'prod-1', // Dolo 650
+    productId: 'prod-1',
     customRate: 26.00,
     note: 'Contract rate: 1000+ strips/month',
   },
   {
     customerId: 'cust-krishna',
-    productId: 'prod-2', // Augmentin 625
+    productId: 'prod-2',
     customRate: 172.00,
     note: 'ICU contract pricing',
   },
@@ -556,7 +715,7 @@ export const INITIAL_CUSTOMER_PRICES: CustomerProductPrice[] = [
   },
   {
     customerId: 'cust-aayush',
-    productId: 'prod-3', // Pan 40
+    productId: 'prod-3',
     customRate: 120.00,
     note: 'Endoscopy unit contract',
   },
@@ -643,6 +802,7 @@ export const INITIAL_INVOICES: Invoice[] = [
     date: '2026-09-29',
     customerName: 'Suresh Verma (Cash Walk-in)',
     customerPhone: '9820155555',
+    doctorName: 'Dr. Ramesh Gupta (MBBS)',
     paymentMethod: 'cash',
     paymentStatus: 'paid',
     subtotal: 215.00,
@@ -694,6 +854,7 @@ export const INITIAL_INVOICES: Invoice[] = [
     customerPhone: '+91 98200 88776',
     customerGstin: '27AABCK8899E1Z2',
     customerDl: '20B/MH-TZ-554433',
+    doctorName: 'Hospital Pharmacy Dept',
     paymentMethod: 'credit',
     paymentStatus: 'unpaid',
     subtotal: 2600.00,
@@ -754,7 +915,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     role: 'Admin',
     action: 'SYSTEM_BOOT',
     entity: 'System',
-    details: 'Prince Pharma v2 initialized with Single Physical Inventory and FEFO Engine.',
+    details: 'Prince Pharma v2 initialized with Marg Books design standards, Single Physical Inventory and FEFO Engine.',
   },
   {
     id: 'log-2',

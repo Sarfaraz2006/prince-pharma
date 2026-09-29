@@ -2713,7 +2713,7 @@ export default function PrincePharmaApp() {
                 <h4 className="font-bold text-sm">Supplier Dues (Payable)</h4>
                 {suppliers.filter(s => s.currentOutstanding > 0).slice(0, 5).map(s => (
                   <div key={s.id} className="flex items-center justify-between text-xs">
-                    <span className={`${themeClasses.secondaryText} truncate max-w-[55%]`}>{s.companyName}</span>
+                    <span className={`${themeClasses.secondaryText} truncate max-w-[55%]`}>{s.name}</span>
                     <span className="font-mono font-bold text-rose-600">₹{s.currentOutstanding.toLocaleString()}</span>
                   </div>
                 ))}

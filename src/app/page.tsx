@@ -89,6 +89,7 @@ export default function PrincePharmaApp() {
     | 'returns'
     | 'reports'
     | 'audit'
+    | 'analytics'
     | 'settings'
   >('billing');
   const [userRole, setUserRole] = useState<'Owner' | 'Admin' | 'Pharmacist' | 'Cashier'>('Admin');
@@ -213,8 +214,8 @@ export default function PrincePharmaApp() {
   const [returnQtyInput, setReturnQtyInput] = useState<number>(1);
   const [returnReasonInput, setReturnReasonInput] = useState<string>('Patient unneeded / course changed');
 
-  // Search input ref for quick keyboard focus
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const invoicePrintRef = useRef<HTMLDivElement>(null);
 
   // Load state from localStorage on initial client mount
   useEffect(() => {
@@ -876,9 +877,51 @@ export default function PrincePharmaApp() {
   };
 
   // WhatsApp share link generator
-  const getWhatsAppShareUrl = (inv: Invoice) => {
-    const text = `*PRINCE PHARMA - TAX INVOICE*\nInvoice: ${inv.invoiceNumber}\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'General'}\nTotal Amount: ₹${inv.grandTotal.toFixed(2)}\nPayment: ${inv.paymentMethod.toUpperCase()}\n\nThank you for choosing Prince Pharma! DL: ${settings.dlNumber20b}`;
-    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const handleWhatsAppWithPdf = async (inv: Invoice) => {
+    try {
+      notify('Generating bill PDF...');
+      // Dynamic imports
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+      
+      const el = document.getElementById('invoice-print-area');
+      if (!el) {
+        // Fallback: just open WhatsApp with text
+        const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'N/A'}\n\n*ITEMS:*\n${inv.items.map(item => `• ${item.productName} × ${item.quantity} = ₹${(item.quantity * item.unitPrice).toFixed(2)}`).join('\n')}\n\n*GRAND TOTAL: ₹${inv.grandTotal.toFixed(2)}*\nPayment: ${inv.paymentMethod.toUpperCase()}\n\nThank you! DL: ${settings.dlNumber20b}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+        return;
+      }
+      
+      const canvas = await html2canvas(el, { 
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const canvasAspect = canvas.height / canvas.width;
+      const imgH = pageW * canvasAspect;
+      const finalH = Math.min(imgH, pageH);
+      pdf.addImage(imgData, 'PNG', 0, 0, pageW, finalH);
+      
+      // Download PDF
+      pdf.save(`Invoice_${inv.invoiceNumber}.pdf`);
+      
+      // Then open WhatsApp with professional summary text
+      const phone = inv.customerPhone?.replace(/[^0-9]/g, '') || '';
+      const text = `*${settings.name}*\n📄 Invoice *#${inv.invoiceNumber}* has been sent to you.\nDate: ${inv.date} | Amount: *₹${inv.grandTotal.toFixed(2)}*\nPayment: ${inv.paymentMethod.toUpperCase()}\n\n_Please find the attached PDF invoice. For queries, call ${settings.phone}_`;
+      const waUrl = phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+      setTimeout(() => window.open(waUrl, '_blank'), 500);
+      notify('PDF downloaded! Opening WhatsApp...');
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      // Fallback to text
+      const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nTotal: ₹${inv.grandTotal.toFixed(2)}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
   };
 
   // WhatsApp payment reminder link generator
@@ -997,7 +1040,7 @@ export default function PrincePharmaApp() {
             )}
             <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 rounded-lg">
               <CreditCard className="w-3.5 h-3.5" />
-              <span className="text-[11px]">Udhar: ₹{stats.totalUdhar.toLocaleString()}</span>
+              <span className="text-[11px]">Receivables: ₹{stats.totalUdhar.toLocaleString()}</span>
             </div>
           </div>
 
@@ -1025,10 +1068,10 @@ export default function PrincePharmaApp() {
                   ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
                   : 'bg-amber-950/80 hover:bg-amber-900 text-amber-300 border-amber-700'
               }`}
-              title="System Flow: Kahan Se Kya Hota Hai?"
+              title="System Guide"
             >
               <HelpCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="hidden sm:inline">Kahan Se Kya Hota Hai?</span>
+              <span className="hidden sm:inline">System Guide</span>
               <span className="sm:hidden">Guide</span>
             </button>
 
@@ -1080,7 +1123,7 @@ export default function PrincePharmaApp() {
           </div>
           <span>•</span>
           <div className="flex items-center gap-1 shrink-0 text-amber-700 font-bold">
-            <span>Udhar:</span>
+            <span>Receivables:</span>
             <strong>₹{stats.totalUdhar.toLocaleString()}</strong>
           </div>
           {stats.nearExpiryCount > 0 && (
@@ -1098,16 +1141,17 @@ export default function PrincePharmaApp() {
       <nav className={`${themeClasses.nav} text-xs font-semibold`}>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 flex items-center gap-1.5 overflow-x-auto py-1.5 scrollbar-none">
           {[
-            { id: 'billing', label: '1. Counter Bill', hint: 'Grahak Bill', icon: ShoppingCart, hotkey: 'F1' },
-            { id: 'inventory', label: '2. Dukan Stock', hint: 'Live Stock', icon: Boxes, hotkey: 'F2' },
-            { id: 'purchases', label: '3. Naya Maal Entry', hint: 'Wholesale Khareed', icon: Truck },
-            { id: 'udhari', label: '4. Udhari Khata', hint: 'Baaki & WhatsApp', icon: CreditCard },
-            { id: 'expiry', label: '5. Expiry Check', hint: 'Alerts', icon: Clock, hotkey: 'F4' },
-            { id: 'returns', label: '6. Maal Wapasi', hint: 'Returns', icon: RotateCcw },
-            { id: 'substitute', label: '7. Salt Formula', hint: 'Same Formula', icon: Layers, hotkey: 'F7' },
-            { id: 'pricing', label: '8. Wholesale Rates', hint: 'Hospital Contract', icon: Users, hotkey: 'F3' },
-            { id: 'reports', label: '9. GST Report', hint: 'Tax Breakdown', icon: BarChart3 },
-            { id: 'settings', label: '10. Dukan Setup', hint: 'GST, DL, Address', icon: Settings },
+            { id: 'billing', label: 'Point of Sale', hint: 'Counter Billing (F1)', icon: ShoppingCart, hotkey: 'F1' },
+            { id: 'inventory', label: 'Stock & Batches', hint: 'FEFO Inventory (F2)', icon: Boxes, hotkey: 'F2' },
+            { id: 'purchases', label: 'Purchase Entry', hint: 'Inward Stock', icon: Truck },
+            { id: 'udhari', label: 'Credit Ledger', hint: 'Receivables', icon: CreditCard },
+            { id: 'expiry', label: 'Expiry Watch', hint: 'Alerts', icon: Clock, hotkey: 'F4' },
+            { id: 'returns', label: 'Returns', hint: 'Sales Returns', icon: RotateCcw },
+            { id: 'substitute', label: 'Drug Finder', hint: 'Salt Match (F7)', icon: Layers, hotkey: 'F7' },
+            { id: 'pricing', label: 'Price Contracts', hint: 'Wholesale Rates', icon: Users, hotkey: 'F3' },
+            { id: 'reports', label: 'Reports & GST', hint: 'Tax Breakdown', icon: BarChart3 },
+            { id: 'analytics', label: 'Analytics', hint: 'Business Insights', icon: BarChart3 },
+            { id: 'settings', label: 'Settings', hint: 'Store Setup', icon: Settings },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1164,24 +1208,25 @@ export default function PrincePharmaApp() {
                 className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-3 py-2 rounded-xl text-xs shadow-xs transition cursor-pointer"
               >
                 <HelpCircle className="w-4 h-4" />
-                <span>Kahan Se Kya Hota Hai? (Guide)</span>
+                <span>System Guide</span>
               </button>
 
               <div className="space-y-1">
                 <span className={`text-[10px] ${themeClasses.secondaryText} uppercase tracking-wider font-mono px-2`}>
-                  Dukan Ke 10 Kaam (Modules)
+                  Modules
                 </span>
                 {[
-                  { id: 'billing', label: '1. Counter Bill (Grahak Bill)', icon: ShoppingCart },
-                  { id: 'inventory', label: '2. Dukan Stock (Live Godown)', icon: Boxes },
-                  { id: 'purchases', label: '3. Naya Maal Entry (Purchase)', icon: Truck },
-                  { id: 'udhari', label: '4. Udhari Khata (Baaki & WhatsApp)', icon: CreditCard },
-                  { id: 'expiry', label: '5. Expiry Check (Alerts)', icon: Clock },
-                  { id: 'returns', label: '6. Maal Wapasi (Returns)', icon: RotateCcw },
-                  { id: 'substitute', label: '7. Salt Formula (F7 Shortcut)', icon: Layers },
-                  { id: 'pricing', label: '8. Wholesale Rates (Contracts)', icon: Users },
-                  { id: 'reports', label: '9. GST Report (Tax Breakdown)', icon: BarChart3 },
-                  { id: 'settings', label: '10. Dukan Setup (GST, DL, Address)', icon: Settings },
+                  { id: 'billing', label: '1. Point of Sale', icon: ShoppingCart },
+                  { id: 'inventory', label: '2. Stock & Batches', icon: Boxes },
+                  { id: 'purchases', label: '3. Purchase Entry', icon: Truck },
+                  { id: 'udhari', label: '4. Credit Ledger', icon: CreditCard },
+                  { id: 'expiry', label: '5. Expiry Watch', icon: Clock },
+                  { id: 'returns', label: '6. Returns', icon: RotateCcw },
+                  { id: 'substitute', label: '7. Drug Finder (F7)', icon: Layers },
+                  { id: 'pricing', label: '8. Price Contracts', icon: Users },
+                  { id: 'reports', label: '9. Reports & GST', icon: BarChart3 },
+                  { id: 'analytics', label: '10. Analytics', icon: BarChart3 },
+                  { id: 'settings', label: '11. Settings', icon: Settings },
                 ].map((item) => {
                   const Icon = item.icon;
                   return (
@@ -1264,117 +1309,6 @@ export default function PrincePharmaApp() {
       {/* 3. MAIN WORKSPACE VIEW */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 pb-24 lg:pb-6">
         {/* ============================================================== */}
-        {/* SYSTEM WORKFLOW GUIDE BANNER: KAHAN SE KYA HOTA HAI? */}
-        {/* ============================================================== */}
-        <div className="mb-4 bg-gradient-to-r from-emerald-900 via-slate-900 to-teal-950 text-white rounded-2xl p-3.5 sm:p-4 shadow-xl border border-emerald-700/50">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-emerald-800/60">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
-                🧭
-              </div>
-              <div>
-                <h2 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                  <span>Dukan Ka Kaam & Workflow: Kahan Se Kya Hota Hai?</span>
-                  <span className="text-[10px] font-mono bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-normal border border-emerald-600">
-                    Aasan Guide
-                  </span>
-                </h2>
-                <p className="text-[11px] text-emerald-200/90 font-medium">
-                  Pharmacy counter ka pura hisaab-kitab in 4 saral steps me samjhein:
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-auto">
-              <button
-                onClick={() => setShowSystemGuideModal(true)}
-                className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Pura System Map Dekhein</span>
-              </button>
-              <button
-                onClick={() => setShowGuideBanner(!showGuideBanner)}
-                className="px-2.5 py-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 rounded-xl text-xs font-semibold border border-emerald-600 cursor-pointer"
-              >
-                {showGuideBanner ? 'Hide' : 'Show'}
-              </button>
-            </div>
-          </div>
-
-          {showGuideBanner && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-3">
-              {/* Step 1 */}
-              <div
-                onClick={() => setActiveTab('purchases')}
-                className="bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/60 rounded-xl p-2.5 cursor-pointer transition space-y-1 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>1. Naya Maal Entry</span>
-                  </span>
-                  <span className="text-[9px] bg-emerald-800/80 text-emerald-200 px-1.5 py-0.5 rounded font-mono">Wholesale Bill</span>
-                </div>
-                <p className="text-[11px] text-slate-200 leading-snug">
-                  Distributor (jaise <strong>Satyam Pharma</strong>) se jab naya challan/carton aaye, entry yahan karein. Stock apne aap badhega.
-                </p>
-              </div>
-
-              {/* Step 2 */}
-              <div
-                onClick={() => setActiveTab('inventory')}
-                className="bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/60 rounded-xl p-2.5 cursor-pointer transition space-y-1 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
-                    <Boxes className="w-3.5 h-3.5 text-teal-400" />
-                    <span>2. Dukan Ka Stock</span>
-                  </span>
-                  <span className="text-[9px] bg-teal-800/80 text-teal-200 px-1.5 py-0.5 rounded font-mono">Live Godown</span>
-                </div>
-                <p className="text-[11px] text-slate-200 leading-snug">
-                  Kaunsi dawa kitni bachi hai, batch number kya hai aur kab expire hogi, sab yahan check karein.
-                </p>
-              </div>
-
-              {/* Step 3 */}
-              <div
-                onClick={() => setActiveTab('billing')}
-                className="bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/60 rounded-xl p-2.5 cursor-pointer transition space-y-1 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    <ShoppingCart className="w-3.5 h-3.5 text-amber-400" />
-                    <span>3. Counter Billing (POS)</span>
-                  </span>
-                  <span className="text-[9px] bg-amber-800/80 text-amber-200 px-1.5 py-0.5 rounded font-mono">Grahak Bill</span>
-                </div>
-                <p className="text-[11px] text-slate-200 leading-snug">
-                  Mareez ya doctor ki parchi aayi to yahan dawa chunein. Single Godown se FEFO batch katega aur <strong>Satyam format GST bill</strong> print hoga.
-                </p>
-              </div>
-
-              {/* Step 4 */}
-              <div
-                onClick={() => setActiveTab('udhari')}
-                className="bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-700/60 rounded-xl p-2.5 cursor-pointer transition space-y-1 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-sky-400" />
-                    <span>4. Udhari & WhatsApp</span>
-                  </span>
-                  <span className="text-[9px] bg-sky-800/80 text-sky-200 px-1.5 py-0.5 rounded font-mono">Ledger</span>
-                </div>
-                <p className="text-[11px] text-slate-200 leading-snug">
-                  Hospital ya patient ka baaki hisaab yahan dekhein. 1-click me WhatsApp reminder bhejein aur payment aane par hisaab clear karein.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
         {/* ============================================================== */}
         {/* TAB 1: POS BILLING COUNTER (Marg Books Clean Split View) */}
         {/* ============================================================== */}
@@ -1388,7 +1322,7 @@ export default function PrincePharmaApp() {
                   <div className="flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">1</span>
                     <span className="font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-white">
-                      Kadam 1: Sale Mode & Grahak / Doctor Chunein
+                      STEP 1: CUSTOMER & SALE MODE
                     </span>
                   </div>
                   <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded font-bold">
@@ -1514,11 +1448,11 @@ export default function PrincePharmaApp() {
                   <div className="flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[11px]">2</span>
                     <span className="font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-white">
-                      Kadam 2: Dawa Search & Bill Mein Add Karein
+                      STEP 2: MEDICINE SEARCH
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-500 font-medium">
-                    Name, Salt Formula ya Barcode scan karein
+                    Name, Generic Salt or Barcode
                   </span>
                 </div>
 
@@ -1619,7 +1553,7 @@ export default function PrincePharmaApp() {
                     onClick={() => setShowAddProductModal(true)}
                     className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold transition cursor-pointer"
                   >
-                    + Nayi Dawa
+                    + + New Medicine
                   </button>
                 </div>
               </div>
@@ -1631,7 +1565,7 @@ export default function PrincePharmaApp() {
                     <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center font-bold text-[11px]">3</span>
                     <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-slate-900 dark:text-white">
                       <ShoppingCart className="w-3.5 h-3.5 text-emerald-600" />
-                      Kadam 3: Bill Items ({cartItems.length})
+                      STEP 3: CART ITEMS ({cartItems.length})
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-[11px] font-mono">
@@ -1792,7 +1726,7 @@ export default function PrincePharmaApp() {
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span className="font-bold uppercase tracking-wider text-[11px]">
-                    Kadam 4: Live Asli GST Bill (Satyam / Prince Format)
+                    STEP 4: GST BILL PREVIEW
                   </span>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
@@ -2647,6 +2581,206 @@ export default function PrincePharmaApp() {
         )}
 
         {/* ============================================================== */}
+
+        {/* ============================================================== */}
+        {/* TAB: ANALYTICS DASHBOARD */}
+        {/* ============================================================== */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className={`${themeClasses.card} p-4 rounded-xl`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base">Business Analytics Dashboard</h3>
+                  <p className={`text-xs mt-1 ${themeClasses.secondaryText}`}>Real-time snapshot of store performance, stock health, and financial exposure.</p>
+                </div>
+                <div className={`text-xs font-mono ${themeClasses.secondaryText}`}>{new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+              </div>
+            </div>
+
+            {/* KPI Cards Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: "Today's Revenue", value: `₹${stats.todaySales.toLocaleString()}`, sub: `${stats.todayBillsCount} invoice${stats.todayBillsCount !== 1 ? 's' : ''}`, color: 'emerald', icon: ShoppingCart },
+                { label: 'Total Stock Units', value: stats.totalStock.toLocaleString(), sub: `${stats.lowStockCount} items low stock`, color: 'blue', icon: Boxes },
+                { label: 'Receivables (Udhar)', value: `₹${stats.totalUdhar.toLocaleString()}`, sub: `${customers.filter(c => c.currentOutstanding > 0).length} parties pending`, color: 'amber', icon: CreditCard },
+                { label: 'Near Expiry Batches', value: stats.nearExpiryCount.toString(), sub: `${stats.expiredCount} already expired`, color: 'rose', icon: Clock },
+              ].map(({ label, value, sub, color, icon: Icon }) => (
+                <div key={label} className={`${themeClasses.card} rounded-xl p-4 space-y-2`}>
+                  <div className={`text-${color}-600 flex items-center gap-1.5 text-xs font-semibold`}>
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{label}</span>
+                  </div>
+                  <div className="text-2xl font-black font-mono">{value}</div>
+                  <div className={`text-[11px] ${themeClasses.secondaryText}`}>{sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Revenue by Payment Method */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={`${themeClasses.card} rounded-xl p-4`}>
+                <h4 className="font-bold text-sm mb-4">Revenue by Payment Method</h4>
+                {(() => {
+                  const methods = ['cash', 'upi', 'card', 'credit'] as const;
+                  const totals = methods.map(m => ({
+                    method: m.toUpperCase(),
+                    total: invoices.filter(i => i.paymentMethod === m).reduce((s, i) => s + i.grandTotal, 0),
+                    count: invoices.filter(i => i.paymentMethod === m).length,
+                  })).sort((a, b) => b.total - a.total);
+                  const maxVal = Math.max(...totals.map(t => t.total), 1);
+                  return (
+                    <div className="space-y-3">
+                      {totals.map(({ method, total, count }) => (
+                        <div key={method} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold">{method}</span>
+                            <span className="font-mono">₹{total.toLocaleString()} <span className={`${themeClasses.secondaryText} font-normal`}>({count})</span></span>
+                          </div>
+                          <div className={`h-2 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'} overflow-hidden`}>
+                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(total / maxVal) * 100}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Top 10 Selling Products */}
+              <div className={`${themeClasses.card} rounded-xl p-4`}>
+                <h4 className="font-bold text-sm mb-4">Top 5 Products by Revenue</h4>
+                {(() => {
+                  const prodRevenue: Record<string, { name: string; revenue: number; qty: number }> = {};
+                  invoices.forEach(inv => {
+                    inv.items.forEach(item => {
+                      if (!prodRevenue[item.productId]) prodRevenue[item.productId] = { name: item.productName, revenue: 0, qty: 0 };
+                      prodRevenue[item.productId].revenue += item.quantity * item.unitPrice;
+                      prodRevenue[item.productId].qty += item.quantity;
+                    });
+                  });
+                  const top5 = Object.values(prodRevenue).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+                  const maxRev = Math.max(...top5.map(p => p.revenue), 1);
+                  return (
+                    <div className="space-y-3">
+                      {top5.map((p, i) => (
+                        <div key={i} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold truncate max-w-[60%]">{p.name}</span>
+                            <span className="font-mono">₹{p.revenue.toFixed(0)} <span className={`${themeClasses.secondaryText} font-normal`}>({p.qty} units)</span></span>
+                          </div>
+                          <div className={`h-2 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'} overflow-hidden`}>
+                            <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${(p.revenue / maxRev) * 100}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                      {top5.length === 0 && <p className={`text-xs ${themeClasses.secondaryText} text-center py-4`}>No sales data yet.</p>}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* GST Summary + Supplier Dues */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className={`${themeClasses.card} rounded-xl p-4 space-y-3`}>
+                <h4 className="font-bold text-sm">GST Tax Collected</h4>
+                {[5, 12, 18].map(rate => {
+                  const invItems = invoices.flatMap(inv => inv.items);
+                  const items5 = invItems.filter(item => {
+                    const prod = products.find(p => p.id === item.productId);
+                    return prod && prod.gstRate === rate;
+                  });
+                  const taxableAmt = items5.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+                  const gstAmt = taxableAmt * (rate / 100);
+                  return (
+                    <div key={rate} className="flex items-center justify-between text-xs">
+                      <span className={`${themeClasses.secondaryText}`}>{rate}% GST Slab</span>
+                      <div className="text-right">
+                        <div className="font-mono font-bold">₹{gstAmt.toFixed(2)}</div>
+                        <div className={`text-[10px] ${themeClasses.secondaryText}`}>on ₹{taxableAmt.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className={`pt-2 border-t ${themeClasses.subtleBorder} flex items-center justify-between text-xs`}>
+                  <span className="font-bold">Total GST Collected</span>
+                  <span className="font-mono font-black text-emerald-600">₹{invoices.reduce((s, i) => s + i.cgstTotal + i.sgstTotal, 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className={`${themeClasses.card} rounded-xl p-4 space-y-3`}>
+                <h4 className="font-bold text-sm">Supplier Dues (Payable)</h4>
+                {suppliers.filter(s => s.currentOutstanding > 0).slice(0, 5).map(s => (
+                  <div key={s.id} className="flex items-center justify-between text-xs">
+                    <span className={`${themeClasses.secondaryText} truncate max-w-[55%]`}>{s.companyName}</span>
+                    <span className="font-mono font-bold text-rose-600">₹{s.currentOutstanding.toLocaleString()}</span>
+                  </div>
+                ))}
+                {suppliers.filter(s => s.currentOutstanding > 0).length === 0 && <p className={`text-xs ${themeClasses.secondaryText} text-center py-4`}>No pending supplier dues.</p>}
+                <div className={`pt-2 border-t ${themeClasses.subtleBorder} flex items-center justify-between text-xs`}>
+                  <span className="font-bold">Total Payable</span>
+                  <span className="font-mono font-black text-rose-600">₹{stats.totalSupplierDue.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className={`${themeClasses.card} rounded-xl p-4 space-y-3`}>
+                <h4 className="font-bold text-sm">Inventory Health</h4>
+                <div className="space-y-2">
+                  {[
+                    { label: 'Total Active Batches', value: batches.filter(b => b.status === 'active').length, color: 'emerald' },
+                    { label: 'Low Stock Products', value: stats.lowStockCount, color: 'amber' },
+                    { label: 'Near Expiry (alerts)', value: stats.nearExpiryCount, color: 'orange' },
+                    { label: 'Expired Batches', value: stats.expiredCount, color: 'rose' },
+                    { label: 'Total Products', value: products.length, color: 'blue' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className="flex items-center justify-between text-xs">
+                      <span className={themeClasses.secondaryText}>{label}</span>
+                      <span className={`font-mono font-bold text-${color}-600`}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Invoices Mini-Table */}
+            <div className={`${themeClasses.card} rounded-xl overflow-hidden`}>
+              <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h4 className="font-bold text-sm">Recent Transactions</h4>
+                <button onClick={() => setActiveTab('reports')} className={`text-xs font-semibold text-emerald-600 hover:underline cursor-pointer`}>View All →</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className={`${themeClasses.tableHeader} text-[10px] uppercase font-mono tracking-wider`}>
+                    <tr>
+                      <th className="py-2 px-3">Invoice #</th>
+                      <th className="py-2 px-2">Date</th>
+                      <th className="py-2 px-2">Customer</th>
+                      <th className="py-2 px-2 text-right">Amount</th>
+                      <th className="py-2 px-2">Mode</th>
+                      <th className="py-2 px-2 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.slice(0, 8).map(inv => (
+                      <tr key={inv.id} className={themeClasses.tableRowHover}>
+                        <td className="py-2 px-3 font-mono font-bold text-emerald-600">{inv.invoiceNumber}</td>
+                        <td className={`py-2 px-2 font-mono ${themeClasses.secondaryText}`}>{inv.date}</td>
+                        <td className="py-2 px-2 font-medium truncate max-w-[120px]">{inv.customerName}</td>
+                        <td className="py-2 px-2 text-right font-mono font-bold">₹{inv.grandTotal.toFixed(2)}</td>
+                        <td className={`py-2 px-2 uppercase text-[10px] font-mono ${themeClasses.secondaryText}`}>{inv.paymentMethod}</td>
+                        <td className="py-2 px-2 text-center">
+                          <button onClick={() => setViewingInvoice(inv)} className={`px-2 py-0.5 ${isLight ? 'bg-slate-100 hover:bg-slate-200' : 'bg-slate-800 hover:bg-slate-700'} rounded text-[11px] border ${themeClasses.subtleBorder} cursor-pointer`}>View</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TAB 10: SETTINGS & BACKUP */}
         {/* ============================================================== */}
         {activeTab === 'settings' && (
@@ -2862,15 +2996,13 @@ export default function PrincePharmaApp() {
               </div>
 
               <div className="flex items-center gap-2">
-                <a
-                  href={getWhatsAppShareUrl(viewingInvoice)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => handleWhatsAppWithPdf(viewingInvoice)}
                   className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>WhatsApp</span>
-                </a>
+                  <span>WhatsApp PDF</span>
+                </button>
                 <button
                   onClick={() => window.print()}
                   className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
@@ -2889,11 +3021,13 @@ export default function PrincePharmaApp() {
 
             {/* Actual Printable Invoice Container */}
             <div className="overflow-x-auto">
-              <SatyamPharmaGstInvoice
-                settings={settings}
-                invoice={viewingInvoice}
-                compactThermal={printFormat === '80mm'}
-              />
+              <div id="invoice-print-area">
+                <SatyamPharmaGstInvoice
+                  settings={settings}
+                  invoice={viewingInvoice}
+                  compactThermal={printFormat === '80mm'}
+                />
+              </div>
             </div>
           </div>
         </div>

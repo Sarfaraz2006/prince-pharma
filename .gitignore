@@ -13,3 +13,4 @@ yarn-error.log*
 screenshots_v2/
 .vercel
 .env*
+*.traineddata

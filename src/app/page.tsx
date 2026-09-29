@@ -56,6 +56,7 @@ import {
   Check,
   ExternalLink,
   SlidersHorizontal,
+  Loader2,
 } from 'lucide-react';
 import {
   Product,
@@ -175,12 +176,20 @@ export default function PrincePharmaApp() {
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Automated Distributor Bill Inward & OCR Scanner States
+  // Automated Distributor Bill Inward & Real OCR Scanner States
   const [showAutoInwardModal, setShowAutoInwardModal] = useState<boolean>(false);
   const [autoInwardSupplierId, setAutoInwardSupplierId] = useState<string>('sup-satyam');
   const [autoInwardInvoiceNo, setAutoInwardInvoiceNo] = useState<string>('A012147');
   const [autoInwardDate, setAutoInwardDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isAnalyzingBill, setIsAnalyzingBill] = useState<boolean>(false);
+  const [ocrProgressText, setOcrProgressText] = useState<string>('');
+  const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>(null);
+  const [scannedRawText, setScannedRawText] = useState<string>('');
+  const [showRawText, setShowRawText] = useState<boolean>(false);
+  const [pasteInvoiceText, setPasteInvoiceText] = useState<string>('');
+  const [activeInwardInputTab, setActiveInwardInputTab] = useState<'upload' | 'paste' | 'samples'>('upload');
+  const [currentPdfFile, setCurrentPdfFile] = useState<File | null>(null);
+  const [whatsAppBillUrl, setWhatsAppBillUrl] = useState<string>('');
   const [autoInwardItems, setAutoInwardItems] = useState<Array<{
     id: string;
     productName: string;
@@ -925,13 +934,28 @@ export default function PrincePharmaApp() {
   // WhatsApp share link & PDF generator with native Web Share file attachment + clipboard image + fallback
   const handleWhatsAppWithPdf = async (inv: Invoice) => {
     try {
-      notify('Generating authentic bill PDF...');
+      notify('Generating authentic bill PDF & WhatsApp package...');
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
 
       const el = document.getElementById('invoice-print-area') || document.getElementById('invoice-live-preview-area');
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://prince-pharma.vercel.app';
+      const billUrl = `${origin}/bill?id=${inv.invoiceNumber}&total=${inv.grandTotal.toFixed(2)}&customer=${encodeURIComponent(inv.customerName)}&date=${inv.date}`;
+      setWhatsAppBillUrl(billUrl);
+
+      const phone = (inv.customerPhone || '').replace(/[^0-9]/g, '');
+      const fileName = `Invoice_${inv.invoiceNumber}.pdf`;
+
+      // Open assistant modal immediately for instant feedback
+      setWhatsAppShareInfo({
+        invoiceNumber: inv.invoiceNumber,
+        fileName,
+        phone,
+        total: inv.grandTotal,
+      });
+
       if (!el) {
-        const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'N/A'}\n\n*ITEMS:*\n${inv.items.map((item) => `• ${item.productName} × ${item.quantity} = ₹${(item.quantity * item.unitPrice).toFixed(2)}`).join('\n')}\n\n*GRAND TOTAL: ₹${inv.grandTotal.toFixed(2)}*\nPayment: ${inv.paymentMethod.toUpperCase()}\n\nThank you! DL: ${settings.dlNumber20b}`;
+        const text = `*${settings.name} — INVOICE #${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nGrand Total: ₹${inv.grandTotal.toFixed(2)}\n\n📄 *Download Official PDF Bill:* \n${billUrl}\n\nDL: ${settings.dlNumber20b}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
         return;
       }
@@ -952,32 +976,15 @@ export default function PrincePharmaApp() {
       pdf.addImage(imgData, 'PNG', 0, 0, pageW, finalH);
 
       const pdfBlob = pdf.output('blob');
-      const fileName = `Invoice_${inv.invoiceNumber}.pdf`;
       const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+      setCurrentPdfFile(pdfFile);
 
-      const phone = (inv.customerPhone || '').replace(/[^0-9]/g, '');
-      const waCaption = `*${settings.name} — TAX INVOICE #${inv.invoiceNumber}*\nDate: ${inv.date} | Grand Total: *₹${inv.grandTotal.toFixed(2)}*\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'Consultant'}\nPayment: ${inv.paymentMethod.toUpperCase()}\n\n_Official GST Tax Invoice attached. For queries contact: ${settings.phone}_`;
+      const waCaption = `*${settings.name} — TAX INVOICE #${inv.invoiceNumber}*\nDate: ${inv.date} | Grand Total: *₹${inv.grandTotal.toFixed(2)}*\nBilled To: ${inv.customerName}\nDoctor: ${inv.doctorName || 'Consultant'}\nPayment: ${inv.paymentMethod.toUpperCase()}\n\n📄 *Download / View Official PDF Bill:* \n${billUrl}\n\n_Official GST Tax Invoice. For queries contact: ${settings.phone}_`;
 
-      // 1. Native Web Share API (Attaches PDF file directly in WhatsApp on Mobile / Tablet / Modern Browsers)
-      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        try {
-          await navigator.share({
-            files: [pdfFile],
-            title: `Tax Invoice ${inv.invoiceNumber} - ${settings.name}`,
-            text: waCaption,
-          });
-          notify('Invoice PDF attached & shared via WhatsApp!');
-          return;
-        } catch (shareErr: any) {
-          if (shareErr.name === 'AbortError') return;
-          console.warn('Native share error, falling back:', shareErr);
-        }
-      }
-
-      // 2. Download PDF file to device
+      // 1. Download PDF file directly to device
       pdf.save(fileName);
 
-      // 3. Copy bill image to system clipboard (allows instant Ctrl+V paste in WhatsApp Web)
+      // 2. Copy bill image to system clipboard (allows instant Ctrl+V paste in WhatsApp Web)
       try {
         canvas.toBlob(async (blob) => {
           if (blob && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
@@ -988,7 +995,7 @@ export default function PrincePharmaApp() {
         console.warn('Clipboard copy not supported:', e);
       }
 
-      // 4. Open WhatsApp
+      // 3. Open WhatsApp chat with pre-filled message & bill link
       const waUrl = phone.length >= 10
         ? `https://wa.me/91${phone.slice(-10)}?text=${encodeURIComponent(waCaption)}`
         : `https://wa.me/?text=${encodeURIComponent(waCaption)}`;
@@ -997,16 +1004,18 @@ export default function PrincePharmaApp() {
         window.open(waUrl, '_blank');
       }, 500);
 
+      // 4. Open Assistant Modal with 1-click Mobile Attachment Button & Desktop Instructions
       setWhatsAppShareInfo({
         invoiceNumber: inv.invoiceNumber,
         fileName,
         phone,
         total: inv.grandTotal,
       });
-      notify('PDF Downloaded! Opening WhatsApp chat...');
+      notify('PDF Downloaded! Opening WhatsApp chat with direct bill link...');
     } catch (err) {
       console.error('PDF generation failed:', err);
-      const text = `*${settings.name} — INVOICE ${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nTotal: ₹${inv.grandTotal.toFixed(2)}`;
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://prince-pharma.vercel.app';
+      const text = `*${settings.name} — INVOICE #${inv.invoiceNumber}*\nDate: ${inv.date}\nBilled To: ${inv.customerName}\nTotal: ₹${inv.grandTotal.toFixed(2)}\n\n📄 *View & Download PDF:* \n${origin}/bill?id=${inv.invoiceNumber}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
   };
@@ -1270,6 +1279,275 @@ export default function PrincePharmaApp() {
       },
     ]);
     notify('Cipla Distribution Restock items loaded!');
+  };
+
+  // Real OCR & Document Import Handlers
+  const smartParseTextLine = (line: string) => {
+    const clean = line.replace(/[\[\]\{\}\(\)\|]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (clean.length < 4) return null;
+
+    // 1. Expiry (e.g. 1/28, 04/28, 2028-04-01)
+    const expMatch = clean.match(/\b(\d{1,2})\/(\d{2,4})\b/);
+    let expiryDate = '2028-06-30';
+    let expToken = '';
+    if (expMatch) {
+      expToken = expMatch[0];
+      const mm = expMatch[1].padStart(2, '0');
+      let yy = expMatch[2];
+      if (yy.length === 2) yy = '20' + yy;
+      expiryDate = `${yy}-${mm}-01`;
+    }
+
+    // 2. Batch Number
+    let batchNo = `BAT-${Math.floor(Math.random() * 90000 + 10000)}`;
+    const words = clean.split(' ');
+    const expIdx = words.findIndex((w) => w.includes('/'));
+    if (expIdx > 0) {
+      for (let i = expIdx - 1; i >= 0; i--) {
+        const candidate = words[i].replace(/[^A-Za-z0-9\-]/g, '');
+        if (candidate.length >= 4 && !/^\d+(\.\d+)?$/.test(candidate)) {
+          batchNo = candidate.toUpperCase();
+          break;
+        }
+      }
+    }
+
+    // 3. Name, Pack, and Numbers
+    const tokens = clean.replace(/^\d+[\s\.\)]*/, '').split(' ');
+    const nameParts: string[] = [];
+    let pack = '1 UNIT';
+    const numbers: number[] = [];
+
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t === expToken || t === batchNo) continue;
+      if (/^\d+(\.\d+)?(GM|ML|TAB|CAP|MG|S)$/i.test(t) || /^\d+\*\d+/i.test(t)) {
+        pack = t.toUpperCase();
+        nameParts.push(t);
+        continue;
+      }
+      const num = parseFloat(t);
+      if (!isNaN(num) && /^\d+(\.\d+)?$/.test(t)) {
+        numbers.push(num);
+      } else if (numbers.length === 0) {
+        nameParts.push(t);
+      }
+    }
+
+    const medicineName =
+      nameParts
+        .join(' ')
+        .replace(/^[0-9\s\.\-]+/, '')
+        .trim()
+        .toUpperCase() || 'PHARMA MEDICINE';
+
+    let qty = 1;
+    let rate = 50;
+    let mrp = 65;
+
+    if (numbers.length >= 1) {
+      if (Number.isInteger(numbers[0]) && numbers[0] > 0 && numbers[0] <= 500) {
+        qty = numbers[0];
+        if (numbers.length >= 2) rate = numbers[1];
+        if (numbers.length >= 3) mrp = numbers[2];
+      } else {
+        rate = numbers[0];
+        if (numbers.length >= 2) mrp = numbers[1];
+      }
+    }
+
+    if (mrp < rate) {
+      const temp = mrp;
+      mrp = rate;
+      rate = temp;
+    }
+    if (mrp <= rate) {
+      mrp = Math.round(rate * 1.35 * 100) / 100;
+    }
+
+    const wholesalePrice = Math.round(rate * 1.15 * 100) / 100;
+
+    return {
+      productName: medicineName,
+      genericName: `${medicineName} Salt`,
+      pack,
+      quantity: Math.max(1, qty),
+      freeQuantity: 0,
+      purchaseRate: rate,
+      mrp,
+      wholesalePrice,
+      batchNumber: batchNo,
+      expiryDate,
+      gstRate: 5,
+      hsnCode: '300490',
+      discountPercent: 0,
+    };
+  };
+
+  const parseAndSetRawText = (text: string) => {
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    const parsedItems: any[] = [];
+
+    const invMatch = text.match(/Invoice\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-]+)/i) || text.match(/Bill\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
+    if (invMatch && invMatch[1]) {
+      setAutoInwardInvoiceNo(invMatch[1].toUpperCase());
+    }
+
+    if (/cipla/i.test(text)) setAutoInwardSupplierId('sup-1');
+    else if (/sun/i.test(text)) setAutoInwardSupplierId('sup-2');
+    else if (/alkem/i.test(text)) setAutoInwardSupplierId('sup-3');
+    else if (/satyam/i.test(text)) setAutoInwardSupplierId('sup-satyam');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.includes(',') || line.includes('\t')) {
+        const sep = line.includes('\t') ? '\t' : ',';
+        const cols = line.split(sep).map((c) => c.trim().replace(/^["']|["']$/g, ''));
+        if (cols.length >= 2 && !/^(item|product|name|sr|sn)/i.test(cols[0])) {
+          const name = cols[0] || cols[1] || 'MEDICINE';
+          const qty = parseInt(cols.find((c) => /^\d+$/.test(c) && parseInt(c) < 500) || '10') || 10;
+          const rate = parseFloat(cols.find((c) => /^\d+(\.\d+)?$/.test(c) && parseFloat(c) > 0) || '50') || 50;
+          const mrp = Math.round(rate * 1.35 * 100) / 100;
+          parsedItems.push({
+            id: `item-csv-${Date.now()}-${i}`,
+            productName: name.toUpperCase(),
+            genericName: `${name} Formula`,
+            pack: '10 STRIP',
+            quantity: qty,
+            freeQuantity: 0,
+            purchaseRate: rate,
+            mrp,
+            wholesalePrice: Math.round(rate * 1.15 * 100) / 100,
+            batchNumber: `BAT-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+            expiryDate: '2028-06-30',
+            gstRate: 12,
+            hsnCode: '30049099',
+            discountPercent: 0,
+          });
+          continue;
+        }
+      }
+
+      if (/^\s*(\d{1,2})[\s\|\.\)\:]+/.test(line) || /[A-Z]{3,}/.test(line)) {
+        const item = smartParseTextLine(line);
+        if (item && item.productName.length >= 3 && !/^(GST|TOTAL|SUBTOTAL|CLASS|IRN|SIGNATURE|PRICE)/i.test(item.productName)) {
+          parsedItems.push({
+            id: `item-txt-${Date.now()}-${i}`,
+            ...item,
+          });
+        }
+      }
+    }
+
+    if (parsedItems.length > 0) {
+      setAutoInwardItems(parsedItems);
+      notify(`Parsed ${parsedItems.length} medicines from text!`);
+    } else {
+      notify('Could not identify any medicine rows. Please check format or edit manually.', 'error');
+    }
+  };
+
+  const handleProcessUploadedFile = async (file: File) => {
+    setIsAnalyzingBill(true);
+    setOcrProgressText(`Reading "${file.name}"...`);
+
+    try {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => setUploadedImagePreview(e.target?.result as string);
+        reader.readAsDataURL(file);
+
+        setOcrProgressText('Extracting medicines from invoice image with AI OCR...');
+        const Tesseract = (await import('tesseract.js')).default;
+        const {
+          data: { text },
+        } = await Tesseract.recognize(file, 'eng');
+
+        let detectedSup = 'Satyam Pharmaceuticals';
+        if (/cipla/i.test(text)) detectedSup = 'Cipla Ltd Depot';
+        else if (/sun/i.test(text)) detectedSup = 'Sun Pharma Laboratories';
+        else if (/alkem/i.test(text)) detectedSup = 'Alkem Laboratories Ltd';
+        else if (/satyam/i.test(text)) detectedSup = 'Satyam Pharmaceuticals';
+
+        const invMatch = text.match(/Invoice\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-]+)/i) || text.match(/Bill\s*No\.?\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
+
+        const data: {
+          rawText: string;
+          success: boolean;
+          invoiceNumber: string;
+          supplierName: string;
+          items: any[];
+        } = {
+          rawText: text,
+          success: true,
+          invoiceNumber: (invMatch && invMatch[1]) ? invMatch[1].toUpperCase() : 'A012147',
+          supplierName: detectedSup,
+          items: [],
+        };
+
+        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          if (/^\s*(\d{1,2})[\s\|\.\)\:]+/.test(line)) {
+            const it = smartParseTextLine(line);
+            if (it && it.productName.length >= 3 && !/^(GST|TOTAL|SUBTOTAL|CLASS|IRN|SIGNATURE)/i.test(it.productName)) {
+              data.items.push(it);
+            }
+          }
+        }
+
+        setScannedRawText(data.rawText || '');
+        if (data.invoiceNumber) setAutoInwardInvoiceNo(data.invoiceNumber);
+
+        if (data.supplierName) {
+          const matched = suppliers.find(
+            (s) =>
+              s.name.toLowerCase().includes(data.supplierName.toLowerCase()) ||
+              data.supplierName.toLowerCase().includes(s.name.toLowerCase())
+          );
+          if (matched) setAutoInwardSupplierId(matched.id);
+        }
+
+        if (data.items && data.items.length > 0) {
+          const mapped = data.items.map((it: any, idx: number) => ({
+            id: `ocr-${Date.now()}-${idx}`,
+            productName: it.productName || it.medicineName,
+            genericName: it.genericName || `${it.productName || it.medicineName} Salt`,
+            pack: it.pack || '1 UNIT',
+            quantity: it.quantity || 1,
+            freeQuantity: it.freeQuantity || it.free || 0,
+            purchaseRate: it.purchaseRate || it.rate || 50,
+            mrp: it.mrp || 65,
+            wholesalePrice:
+              it.wholesalePrice ||
+              it.wholesaleRate ||
+              Math.round((it.purchaseRate || 50) * 1.15 * 100) / 100,
+            batchNumber:
+              it.batchNumber ||
+              it.batchNo ||
+              `BAT-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+            expiryDate: it.expiryDate || '2028-06-30',
+            gstRate: it.gstRate || 5,
+            hsnCode: it.hsnCode || '300490',
+            discountPercent: it.discountPercent || 0,
+          }));
+          setAutoInwardItems(mapped);
+          notify(`Extracted ${mapped.length} medicines from "${file.name}"!`);
+        } else {
+          notify(`OCR finished for "${file.name}". No lines recognized automatically. You can review raw text or edit items.`, 'error');
+        }
+      } else {
+        setOcrProgressText('Reading text content from file...');
+        const text = await file.text();
+        setScannedRawText(text);
+        parseAndSetRawText(text);
+      }
+    } catch (err: any) {
+      console.error('File parsing error:', err);
+      notify(`Failed to process file: ${err.message || 'Unknown error'}`, 'error');
+    } finally {
+      setIsAnalyzingBill(false);
+      setOcrProgressText('');
+    }
   };
 
   const handleConfirmAutoInward = () => {
@@ -5011,14 +5289,163 @@ export default function PrincePharmaApp() {
               </button>
             </div>
 
-            {/* Quick Presets & File Upload Bar */}
-            <div className={`p-3 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} shrink-0 space-y-3`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                  <Camera className="w-4 h-4 text-emerald-600" />
-                  Auto-Extract Items from Distributor Bills:
-                </span>
-                <div className="flex items-center gap-2 flex-wrap">
+            {/* Input Mode Switcher Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+              <button
+                type="button"
+                onClick={() => setActiveInwardInputTab('upload')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeInwardInputTab === 'upload'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span>📁 Upload Invoice (Photo / PDF / CSV)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveInwardInputTab('paste')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeInwardInputTab === 'paste'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>📋 Paste WhatsApp / Email Text</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveInwardInputTab('samples')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeInwardInputTab === 'samples'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>⚡ Demo Presets</span>
+              </button>
+            </div>
+
+            {/* TAB 1: File Uploader (Real OCR / CSV) */}
+            {activeInwardInputTab === 'upload' && (
+              <div className={`p-4 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} space-y-3`}>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-emerald-600" />
+                      <span>Select or Capture Distributor Invoice:</span>
+                    </div>
+                    <p className={`text-[11px] ${themeClasses.secondaryText}`}>
+                      Accepts bill photos (.jpg, .png), scanner PDFs, or exported spreadsheets (.csv, .tsv, .txt)
+                    </p>
+                  </div>
+
+                  <label className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer shrink-0">
+                    <UploadCloud className="w-4 h-4" />
+                    <span>Choose Invoice File to Scan</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf,.csv,.tsv,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          handleProcessUploadedFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {/* Scanning Progress Banner */}
+                {isAnalyzingBill && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-center gap-3 animate-pulse">
+                    <Loader2 className="w-5 h-5 text-emerald-600 animate-spin shrink-0" />
+                    <div className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+                      {ocrProgressText || 'Extracting medicines from invoice via AI OCR...'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Scanned Document Thumbnail & Raw OCR Inspector */}
+                {uploadedImagePreview && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <img
+                      src={uploadedImagePreview}
+                      alt="Scanned Bill"
+                      className="w-16 h-16 object-cover rounded-lg border border-slate-300 shadow-xs"
+                    />
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                        Scanned Bill Image Attached
+                      </span>
+                      {scannedRawText && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setShowRawText(!showRawText)}
+                            className="text-[11px] font-semibold text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>{showRawText ? 'Hide Scanned Text' : 'View Scanned OCR Text'}</span>
+                            <span className="text-slate-400">({scannedRawText.length} characters)</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {showRawText && scannedRawText && (
+                  <div className="max-h-32 overflow-y-auto p-2 bg-slate-100 dark:bg-slate-950 rounded-lg border border-slate-300 dark:border-slate-800 font-mono text-[10px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                    {scannedRawText}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: Textarea Paste */}
+            {activeInwardInputTab === 'paste' && (
+              <div className={`p-4 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} space-y-3`}>
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Paste Invoice Lines from WhatsApp, Email, or Spreadsheet:
+                  </div>
+                  <p className={`text-[11px] ${themeClasses.secondaryText}`}>
+                    Example format: 1. DOLO 650 TABLET 15STRIP QTY: 10 BATCH: DL24 EXP: 12/27 RATE: 21.00 MRP: 33.60
+                  </p>
+                </div>
+                <textarea
+                  rows={3}
+                  value={pasteInvoiceText}
+                  onChange={(e) => setPasteInvoiceText(e.target.value)}
+                  placeholder="Paste distributor bill text here..."
+                  className={`w-full ${themeClasses.input} rounded-lg p-2.5 font-mono text-xs`}
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!pasteInvoiceText.trim()) return notify('Please paste invoice text first', 'error');
+                      parseAndSetRawText(pasteInvoiceText);
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Extract Medicines from Pasted Text</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: Demo Samples */}
+            {activeInwardInputTab === 'samples' && (
+              <div className={`p-4 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} space-y-2`}>
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Quick Demo Pre-Configured Invoices:
+                </div>
+                <div className="flex items-center gap-2 flex-wrap pt-1">
                   <button
                     type="button"
                     onClick={handleLoadSatyamBillItems}
@@ -5035,27 +5462,11 @@ export default function PrincePharmaApp() {
                     <Boxes className="w-3.5 h-3.5" />
                     <span>⚡ Load Cipla Restock (3 Medicines)</span>
                   </button>
-                  <label className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer">
-                    <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Upload Photo / PDF Bill</span>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf,.csv"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          notify(`Scanning "${e.target.files[0].name}" via OCR...`);
-                          setTimeout(() => {
-                            handleLoadSatyamBillItems();
-                            notify(`Extracted 8 medicines from "${e.target.files[0].name}" successfully!`);
-                          }, 800);
-                        }
-                      }}
-                    />
-                  </label>
                 </div>
               </div>
+            )}
 
+            <div className={`p-3 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/60'} shrink-0 space-y-3`}>
               {/* Distributor Metadata Row */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 dark:border-slate-800 text-xs">
                 <div>
@@ -5344,19 +5755,77 @@ export default function PrincePharmaApp() {
                 </div>
               </div>
 
+              {/* Direct Native Share Button for Mobile */}
+              {currentPdfFile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof navigator !== 'undefined' && navigator.share) {
+                      navigator.share({
+                        files: [currentPdfFile],
+                        title: `Tax Invoice ${whatsAppShareInfo.invoiceNumber} - ${settings.name}`,
+                        text: `*${settings.name} — TAX INVOICE #${whatsAppShareInfo.invoiceNumber}*\nGrand Total: ₹${whatsAppShareInfo.total.toFixed(2)}\n\n📄 *Download / View Official PDF Bill:* \n${whatsAppBillUrl}`,
+                      }).catch((err) => {
+                        console.warn('Share error or dismissed:', err);
+                      });
+                    } else {
+                      notify('Direct file sharing not supported on this browser. Use Ctrl+V or the link in chat!');
+                    }
+                  }}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-950/20 cursor-pointer transition active:scale-98"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>📲 Tap to Attach & Send PDF via WhatsApp</span>
+                </button>
+              )}
+
+              {/* Public Link Copy Bar */}
+              {whatsAppBillUrl && (
+                <div className={`p-2.5 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900'} space-y-1`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[11px]">Direct Customer Bill PDF Link:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(whatsAppBillUrl);
+                        notify('Public Bill PDF link copied to clipboard!');
+                      }}
+                      className="text-[11px] font-bold text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copy Link</span>
+                    </button>
+                  </div>
+                  <div className="font-mono text-[10px] text-slate-500 truncate">{whatsAppBillUrl}</div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
-                    <strong>On Mobile Devices (Android / iPhone):</strong>
-                    <p className={themeClasses.secondaryText}>WhatsApp opens automatically with the PDF file attached directly!</p>
+                    <strong>1. On Mobile Devices (Android / iPhone):</strong>
+                    <p className={themeClasses.secondaryText}>
+                      Tap the green button above to open WhatsApp directly with the <strong>actual PDF file attached</strong>!
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                   <div>
-                    <strong>On Desktop (WhatsApp Web):</strong>
-                    <p className={themeClasses.secondaryText}>The full bill image is also copied to your clipboard. Simply press <strong>Ctrl+V</strong> in the WhatsApp chat to send the authentic bill image instantly, or attach the downloaded PDF!</p>
+                    <strong>2. On Desktop (WhatsApp Web):</strong>
+                    <p className={themeClasses.secondaryText}>
+                      WhatsApp Web is opened in a tab. In the chat, simply press <strong>Ctrl+V</strong> to paste the full high-res bill image instantly, or click 📎 &gt; Document to attach the downloaded PDF file!
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>3. Customer 1-Click PDF Link:</strong>
+                    <p className={themeClasses.secondaryText}>
+                      The WhatsApp message already includes a direct clickable link for the customer to open, print, and download their official PDF anytime.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -5366,14 +5835,14 @@ export default function PrincePharmaApp() {
                   type="button"
                   onClick={() => {
                     const waUrl = whatsAppShareInfo.phone.length >= 10
-                      ? `https://wa.me/91${whatsAppShareInfo.phone.slice(-10)}`
-                      : `https://wa.me/`;
+                      ? `https://wa.me/91${whatsAppShareInfo.phone.slice(-10)}?text=${encodeURIComponent(`*${settings.name} — TAX INVOICE #${whatsAppShareInfo.invoiceNumber}*\nGrand Total: ₹${whatsAppShareInfo.total.toFixed(2)}\n\n📄 *Download / View Official PDF Bill:* \n${whatsAppBillUrl}`)}`
+                      : `https://wa.me/?text=${encodeURIComponent(`*${settings.name} — TAX INVOICE #${whatsAppShareInfo.invoiceNumber}*\nGrand Total: ₹${whatsAppShareInfo.total.toFixed(2)}\n\n📄 *Download / View Official PDF Bill:* \n${whatsAppBillUrl}`)}`;
                     window.open(waUrl, '_blank');
                   }}
                   className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open WhatsApp</span>
+                  <span>Open WhatsApp Web</span>
                 </button>
                 <button
                   type="button"

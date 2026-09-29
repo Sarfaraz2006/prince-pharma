@@ -4,7 +4,7 @@ export interface Product {
   brand: string;
   genericName: string;
   manufacturer: string;
-  category: 'tablet' | 'syrup' | 'injection' | 'capsule' | 'ointment';
+  category: 'tablet' | 'syrup' | 'injection' | 'capsule' | 'ointment' | 'drops';
   packSize: number;
   packUnit: string;
   barcode: string;
@@ -72,6 +72,65 @@ export interface Supplier {
   creditDays: number;
   openingBalance: number;
   currentOutstanding: number;
+}
+
+export interface PurchaseItem {
+  productId: string;
+  productName: string;
+  batchNumber: string;
+  expiryDate: string;
+  quantity: number;
+  freeQuantity: number;
+  purchaseRate: number;
+  mrp: number;
+  wholesalePrice: number;
+  gstRate: number;
+  taxableAmount: number;
+  totalAmount: number;
+}
+
+export interface Purchase {
+  id: string;
+  purchaseNumber: string;
+  supplierInvoiceNumber: string;
+  supplierId: string;
+  supplierName: string;
+  date: string;
+  subtotal: number;
+  gstTotal: number;
+  grandTotal: number;
+  paymentStatus: 'paid' | 'credit';
+  items: PurchaseItem[];
+}
+
+export interface SalesReturnItem {
+  productId: string;
+  productName: string;
+  batchNumber: string;
+  quantity: number;
+  rate: number;
+  total: number;
+  reason: string;
+}
+
+export interface SalesReturn {
+  id: string;
+  returnNumber: string;
+  originalInvoiceNumber: string;
+  date: string;
+  customerName: string;
+  refundAmount: number;
+  items: SalesReturnItem[];
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  user: string;
+  role: string;
+  action: string;
+  entity: string;
+  details: string;
 }
 
 export interface InvoiceItemAllocation {
@@ -144,6 +203,7 @@ export interface PharmacySettings {
   retailPrefix: string;
   wholesalePrefix: string;
   nearExpiryDays: number;
+  defaultPrintFormat: 'A4' | '80mm';
 }
 
 export const INITIAL_SETTINGS: PharmacySettings = {
@@ -162,6 +222,7 @@ export const INITIAL_SETTINGS: PharmacySettings = {
   retailPrefix: 'RET-',
   wholesalePrefix: 'WS-',
   nearExpiryDays: 90,
+  defaultPrintFormat: 'A4',
 };
 
 export const INITIAL_PRODUCTS: Product[] = [
@@ -301,7 +362,7 @@ export const INITIAL_BATCHES: Batch[] = [
     batchNumber: 'DL-24A01',
     expiryDate: '2026-12-31', // Expiring earlier -> Must be consumed first
     purchaseDate: '2025-01-10',
-    purchaseRate: '21.00' as any as number,
+    purchaseRate: 21.00,
     mrp: 33.60,
     retailPrice: 33.60,
     wholesalePrice: 27.00,
@@ -349,7 +410,7 @@ export const INITIAL_BATCHES: Batch[] = [
     id: 'bat-301',
     productId: 'prod-3',
     batchNumber: 'PAN-7742',
-    expiryDate: '2026-11-30', // Near expiry (within 90 days)
+    expiryDate: '2026-11-30', // Near expiry
     purchaseDate: '2024-12-05',
     purchaseRate: 98.00,
     mrp: 155.00,
@@ -474,22 +535,19 @@ export const INITIAL_CUSTOMERS: Customer[] = [
   },
 ];
 
-// Customer-specific wholesale contract pricing matrix
 export const INITIAL_CUSTOMER_PRICES: CustomerProductPrice[] = [
-  // Shree Krishna Hospital gets special volume pricing
   {
     customerId: 'cust-krishna',
     productId: 'prod-1', // Dolo 650
-    customRate: 26.00, // Standard wholesale is 27.00
+    customRate: 26.00,
     note: 'Contract rate: 1000+ strips/month',
   },
   {
     customerId: 'cust-krishna',
     productId: 'prod-2', // Augmentin 625
-    customRate: 172.00, // Standard wholesale is 178.00
+    customRate: 172.00,
     note: 'ICU contract pricing',
   },
-  // Aayush Clinic gets negotiated pricing
   {
     customerId: 'cust-aayush',
     productId: 'prod-1',
@@ -499,7 +557,7 @@ export const INITIAL_CUSTOMER_PRICES: CustomerProductPrice[] = [
   {
     customerId: 'cust-aayush',
     productId: 'prod-3', // Pan 40
-    customRate: 120.00, // Standard wholesale is 125.00
+    customRate: 120.00,
     note: 'Endoscopy unit contract',
   },
 ];
@@ -543,6 +601,37 @@ export const INITIAL_SUPPLIERS: Supplier[] = [
     creditDays: 30,
     openingBalance: 0,
     currentOutstanding: 16800,
+  },
+];
+
+export const INITIAL_PURCHASES: Purchase[] = [
+  {
+    id: 'pur-101',
+    purchaseNumber: 'PUR-2026-001',
+    supplierInvoiceNumber: 'INV-CIPLA-8891',
+    supplierId: 'sup-1',
+    supplierName: 'Cipla Distribution Agency',
+    date: '2026-09-20',
+    subtotal: 4200.00,
+    gstTotal: 504.00,
+    grandTotal: 4704.00,
+    paymentStatus: 'credit',
+    items: [
+      {
+        productId: 'prod-1',
+        productName: 'Dolo 650 Tablet',
+        batchNumber: 'DL-25C09',
+        expiryDate: '2027-08-31',
+        quantity: 200,
+        freeQuantity: 10,
+        purchaseRate: 21.00,
+        mrp: 33.60,
+        wholesalePrice: 27.00,
+        gstRate: 12,
+        taxableAmount: 4200.00,
+        totalAmount: 4704.00,
+      },
+    ],
   },
 ];
 
@@ -622,10 +711,10 @@ export const INITIAL_INVOICES: Invoice[] = [
         productName: 'Dolo 650 Tablet',
         hsnCode: '30049060',
         gstRate: 12,
-        quantity: 100, // Consumes 80 from DL-24A01 (earlier exp) and 20 from DL-25C09
+        quantity: 100,
         freeQuantity: 0,
         mrp: 33.60,
-        unitPrice: 26.00, // Contract pricing applied!
+        unitPrice: 26.00,
         discountPercent: 0,
         taxableAmount: 2321.43,
         cgstAmount: 139.29,
@@ -657,7 +746,36 @@ export const INITIAL_INVOICES: Invoice[] = [
   },
 ];
 
-// Helper: Convert number to Indian currency words
+export const INITIAL_AUDIT_LOGS: AuditLog[] = [
+  {
+    id: 'log-1',
+    timestamp: '2026-09-29 09:30:15',
+    user: 'Sarfaraz Ahmad',
+    role: 'Admin',
+    action: 'SYSTEM_BOOT',
+    entity: 'System',
+    details: 'Prince Pharma v2 initialized with Single Physical Inventory and FEFO Engine.',
+  },
+  {
+    id: 'log-2',
+    timestamp: '2026-09-29 10:15:00',
+    user: 'Sarfaraz Ahmad',
+    role: 'Admin',
+    action: 'INVOICE_CREATE',
+    entity: 'Invoice RET-2026-0001',
+    details: 'Walk-in cash bill created for Augmentin 625 (₹215.00). Batch AUG-8820 depleted by 1 unit.',
+  },
+  {
+    id: 'log-3',
+    timestamp: '2026-09-29 10:45:22',
+    user: 'Sarfaraz Ahmad',
+    role: 'Admin',
+    action: 'CONTRACT_SALE',
+    entity: 'Invoice WS-2026-0001',
+    details: 'Wholesale B2B credit sale to Shree Krishna Hospital (₹2600.00). FEFO split: 80 units DL-24A01 + 20 units DL-25C09.',
+  },
+];
+
 export function numberToWordsIndian(num: number): string {
   const a = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
@@ -670,9 +788,9 @@ export function numberToWordsIndian(num: number): string {
     if (n < 20) return a[n] + ' ';
     if (n < 100) return b[Math.floor(n / 10)] + ' ' + a[n % 10] + ' ';
     if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred ' + inWords(n % 100);
-    if (n < 100000) return inWords(Math.floor(n / 1000)) + 'Thousand ' + inWords(n % 1000);
-    if (n < 10000000) return inWords(Math.floor(n / 100000)) + 'Lakh ' + inWords(n % 100000);
-    return inWords(Math.floor(n / 10000000)) + 'Crore ' + inWords(n % 10000000);
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + ' Thousand ' + inWords(n % 1000);
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + ' Lakh ' + inWords(n % 100000);
+    return inWords(Math.floor(n / 10000000)) + ' Crore ' + inWords(n % 10000000);
   }
 
   const rounded = Math.round(num);

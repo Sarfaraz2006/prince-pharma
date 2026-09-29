@@ -11,3 +11,5 @@ yarn-error.log*
 .env*.local
 .env
 screenshots_v2/
+.vercel
+.env*

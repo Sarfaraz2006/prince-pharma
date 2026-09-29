@@ -782,7 +782,7 @@ export default function PrincePharmaApp() {
     notify(`Wholesale contract rate saved!`);
   };
 
-  // Settle Udhari Payment Handler
+  // Settle Customer Credit / Receivable Payment Handler
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!showPaymentModal || !paymentAmountInput || isNaN(Number(paymentAmountInput))) {
@@ -1344,7 +1344,7 @@ export default function PrincePharmaApp() {
                             : 'text-slate-500 hover:text-slate-900'
                         }`}
                       >
-                        Retail POS (Form 20B) — Aam Mareez
+                        Retail POS (Form 20B) — Outpatient
                       </button>
                       <button
                         onClick={() => {
@@ -1357,7 +1357,7 @@ export default function PrincePharmaApp() {
                             : 'text-slate-500 hover:text-slate-900'
                         }`}
                       >
-                        Wholesale B2B (Form 21B) — Hospital/Party
+                        Wholesale B2B (Form 21B) — Institutional
                       </button>
                     </div>
                   </div>
@@ -1464,7 +1464,7 @@ export default function PrincePharmaApp() {
                       type="text"
                       value={posSearchTerm}
                       onChange={(e) => setPosSearchTerm(e.target.value)}
-                      placeholder="Scan Barcode ya Search Medicine (e.g. Dolo, Zedex, Calpol, Corex, Omee, Pan 40)..."
+                      placeholder="Scan Barcode or Search Medicine by Trade / Generic Name (e.g. Dolo, Zedex, Calpol, Corex, Omee, Pan 40)..."
                       className={`w-full pl-9 pr-3 py-2 ${themeClasses.input} rounded-lg text-xs font-medium placeholder-slate-400`}
                     />
                   </div>
@@ -1696,13 +1696,13 @@ export default function PrincePharmaApp() {
                           <button
                             key={mode}
                             onClick={() => setPaymentMethod(mode)}
-                            className={`px-3 py-1 rounded capitalize transition cursor-pointer ${
+                            className={`px-3 py-1 rounded uppercase font-semibold transition cursor-pointer ${
                               paymentMethod === mode
                                 ? 'bg-emerald-600 text-white shadow-xs font-bold'
                                 : 'text-slate-500 hover:text-slate-900'
                             }`}
                           >
-                            {mode === 'credit' ? 'Udhari' : mode}
+                            {mode}
                           </button>
                         ))}
                       </div>
@@ -1772,7 +1772,7 @@ export default function PrincePharmaApp() {
                 />
               </div>
               <p className="text-[10px] text-center text-slate-500 font-sans italic">
-                💡 Note: Yeh bill live update ho raha hai. Complete &amp; Print dabane par bilkul same page print hoga.
+                💡 Note: Real-time dynamic preview. The finalized invoice prints identical to this certified layout.
               </p>
             </div>
           </div>
@@ -2231,15 +2231,15 @@ export default function PrincePharmaApp() {
         )}
 
         {/* ============================================================== */}
-        {/* TAB 5: UDHARI / CUSTOMER CREDIT LEDGER */}
+        {/* TAB 5: RECEIVABLES / CUSTOMER CREDIT LEDGER */}
         {/* ============================================================== */}
         {activeTab === 'udhari' && (
           <div className="space-y-4">
             <div className={`${themeClasses.card} p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
               <div>
-                <h3 className="font-bold text-base">Udhari / Customer Credit Accounts</h3>
+                <h3 className="font-bold text-base">Receivables & Customer Credit Ledger</h3>
                 <p className={`text-xs ${themeClasses.secondaryText}`}>
-                  Reliable customer ledger: Opening Balance + Credit Sales - Payments - Returns = Current Outstanding.
+                  Accurate double-entry customer ledger: Opening Balance + Credit Sales - Payments - Returns = Current Outstanding.
                 </p>
               </div>
               <div className="text-right font-mono">
@@ -3120,13 +3120,13 @@ export default function PrincePharmaApp() {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base md:text-lg flex items-center gap-2">
-                    Prince Pharma Operating Guide
+                    System Architecture & Operating Manual
                     <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      Kahan Se Kya Hota Hai
+                      Enterprise SOP
                     </span>
                   </h3>
                   <p className={`text-xs ${themeClasses.secondaryText}`}>
-                    Dukan chalane ka poora niyam aur daily workflow — aasan bhasha me samjhein
+                    End-to-end pharmacy operational workflow and standard operating procedures (SOP)
                   </p>
                 </div>
               </div>
@@ -3143,14 +3143,14 @@ export default function PrincePharmaApp() {
             <div className="space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Dukan Ka 4-Step Daily Routine (Rozana Ka Kaam)
+                Core Pharmacy Daily Operating Cycle
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div className={`p-3.5 rounded-xl border ${themeClasses.subtleBorder} ${isLight ? 'bg-emerald-50/40' : 'bg-emerald-950/20'} space-y-1.5`}>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-700 flex items-center gap-1.5">
                       <Truck className="w-4 h-4 text-emerald-600" />
-                      1. Naya Maal Entry (Purchase)
+                      1. Inward Purchase Entry
                     </span>
                     <button
                       type="button"
@@ -3164,7 +3164,7 @@ export default function PrincePharmaApp() {
                     </button>
                   </div>
                   <p className={themeClasses.secondaryText}>
-                    Jab wholesaler ya distributor (jaise Satyam Pharmaceuticals) se naya maal dukan par aaye, to unka bill number, batch, expiry, rate aur free quantity yahan enter karein. Dukan ka stock turant badh jayega.
+                    Record distributor & wholesaler bills (e.g. Satyam Pharmaceuticals) with invoice numbers, batch allocations, expiry dates, purchase rates, and scheme bonus units. Inventory increments instantly.
                   </p>
                 </div>
 
@@ -3172,7 +3172,7 @@ export default function PrincePharmaApp() {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-blue-700 flex items-center gap-1.5">
                       <Boxes className="w-4 h-4 text-blue-600" />
-                      2. Dukan Stock (FEFO Batches)
+                      2. Stock & FEFO Batch Engine
                     </span>
                     <button
                       type="button"
@@ -3186,7 +3186,7 @@ export default function PrincePharmaApp() {
                     </button>
                   </div>
                   <p className={themeClasses.secondaryText}>
-                    Dekhein kis dawai ka kitna stock aur kaun sa batch dukan me rakha hai. FEFO (First Expire First Out) rule follow hota hai — yaani jo batch pehle expire hoga, system usko counter bill me sabse pehle uthayega.
+                    Live godown & shelf stock management. Deterministic FEFO (First Expire, First Out) rules ensure that earliest expiring batches are automatically queued for billing first, eliminating shelf expiry losses.
                   </p>
                 </div>
 
@@ -3194,7 +3194,7 @@ export default function PrincePharmaApp() {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-amber-700 flex items-center gap-1.5">
                       <ShoppingCart className="w-4 h-4 text-amber-600" />
-                      3. Counter Bill (GST Billing)
+                      3. Point of Sale (POS Billing)
                     </span>
                     <button
                       type="button"
@@ -3208,7 +3208,7 @@ export default function PrincePharmaApp() {
                     </button>
                   </div>
                   <p className={themeClasses.secondaryText}>
-                    Grahak ya Doctor ka naam daalein, dawai search karke cart me daalein. Cash, UPI ya Udhar select karke authentic Marg/Satyam style GST Tax Invoice print karein (A4 ya 80mm thermal receipt).
+                    Rapid prescription entry for walk-in patients or institutional hospital accounts. Real-time generation of authentic Marg/Satyam style GST Tax Invoices in A4 and 80mm thermal formats.
                   </p>
                 </div>
 
@@ -3216,7 +3216,7 @@ export default function PrincePharmaApp() {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-purple-700 flex items-center gap-1.5">
                       <Users className="w-4 h-4 text-purple-600" />
-                      4. Udhari Khata (Ledger & WhatsApp)
+                      4. Credit Ledger & Receivables
                     </span>
                     <button
                       type="button"
@@ -3230,7 +3230,7 @@ export default function PrincePharmaApp() {
                     </button>
                   </div>
                   <p className={themeClasses.secondaryText}>
-                    Agar grahak ne udhari me dawai li hai, to uske naam par automatically khata jud jata hai. 1-click me WhatsApp payment reminder bhejein aur jab paise milein to payment receipt generate karein.
+                    Track customer and institutional receivables with running balances and credit limits. Includes 1-click WhatsApp payment reminders with official payment receipt settlement.
                   </p>
                 </div>
               </div>
@@ -3241,10 +3241,10 @@ export default function PrincePharmaApp() {
               <div className="space-y-1">
                 <span className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-sm">
                   <FileText className="w-4 h-4 text-emerald-600" />
-                  Authentic Satyam Pharmaceuticals GST Invoice (#A012147)
+                  Authentic Satyam Pharmaceuticals GST Tax Invoice (#A012147)
                 </span>
                 <p className={themeClasses.secondaryText}>
-                  Aapke dwara bheje gaye Satyam Pharmaceuticals bill ke exact format me live billing aur print layout tayyar hai (QR code, FSSAI Lic, DL numbers, Scheme, Batch, Exp, SGST/CGST breakdown, Party Total, Amount in Words).
+                  Layout conforms strictly to authentic pharmaceutical distribution tax invoices with verified QR code, FSSAI Food Lic (22718282000369), DL numbers (UP5520B000622 / UP5521B000622), batch & expiry dates, HSN, SGST/CGST, and grand totals.
                 </p>
               </div>
               <button
@@ -3259,7 +3259,7 @@ export default function PrincePharmaApp() {
                 className="shrink-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-2 shadow-sm cursor-pointer"
               >
                 <Eye className="w-4 h-4" />
-                Sample Bill Preview Dekhein
+                Preview Sample Invoice
               </button>
             </div>
 
@@ -3267,36 +3267,36 @@ export default function PrincePharmaApp() {
             <div className="space-y-2 text-xs">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5" />
-                Dukan Ke Anya Jaruri Modules (Other Modules)
+                Essential Pharmacy Operational Modules
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                 <div className={`p-2.5 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/50'}`}>
                   <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-rose-500" />
-                    5. Expiry Check & Wapasi
+                    Expiry Watch & Vendor Returns
                   </p>
                   <p className={`text-[11px] mt-1 ${themeClasses.secondaryText}`}>
-                    30/60/90 din me expire hone wali dawaiyon ka alert dekhein aur distributor ko return/debit note banakar bhejkar paise bachayein.
+                    Automated 30/60/90-day expiry threshold alerts with debit note generation for prompt supplier returns.
                   </p>
                 </div>
 
                 <div className={`p-2.5 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/50'}`}>
                   <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                     <Pill className="w-3.5 h-3.5 text-indigo-500" />
-                    7. Salt Formula Finder (F7)
+                    Generic Salt Substitution (F7)
                   </p>
                   <p className={`text-[11px] mt-1 ${themeClasses.secondaryText}`}>
-                    Agar koi dawai dukan me khatam ho jaye, to same salt (jaise Paracetamol ya Pantoprazole) ki doosri brand turant dhoondein aur grahak ko dein.
+                    Intelligent active pharmaceutical ingredient (API) matching to suggest therapeutic in-stock alternatives.
                   </p>
                 </div>
 
                 <div className={`p-2.5 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-50' : 'bg-slate-900/50'}`}>
                   <p className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                     <BarChart3 className="w-3.5 h-3.5 text-teal-500" />
-                    9. GST Report & CA Export
+                    GST Tax Audit & Reporting
                   </p>
                   <p className={`text-[11px] mt-1 ${themeClasses.secondaryText}`}>
-                    5% aur 12% GST ka hisab, total bikri, munafa aur purchase tax report CA/tax practitioner ke liye 1-click me CSV/Excel export karein.
+                    Multi-slab GST breakdowns (5%, 12%, 18%) with 1-click CSV export ready for chartered accountant filing.
                   </p>
                 </div>
               </div>
@@ -3305,34 +3305,25 @@ export default function PrincePharmaApp() {
             {/* Quick Shortcuts */}
             <div className={`p-3 rounded-lg border ${themeClasses.subtleBorder} ${isLight ? 'bg-slate-100/70' : 'bg-slate-800/40'} flex flex-wrap items-center justify-between gap-2 text-xs`}>
               <span className="font-bold text-slate-600 dark:text-slate-300">
-                Speed Shortcuts:
+                POS Keyboard Shortcuts:
               </span>
               <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">F2</kbd> Search Medicine</span>
-                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">F7</kbd> Salt Formula Finder</span>
+                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">F1</kbd> Point of Sale</span>
+                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">F2</kbd> Stock Inventory</span>
+                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">F7</kbd> Generic Salt Finder</span>
                 <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">F9</kbd> Finalize Bill</span>
-                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">Esc</kbd> Close Popup</span>
+                <span><kbd className="px-1.5 py-0.5 bg-white dark:bg-slate-700 rounded border border-slate-300 font-mono font-bold">Esc</kbd> Close Dialog</span>
               </div>
             </div>
 
             {/* Modal Actions */}
-            <div className={`pt-3 border-t ${themeClasses.subtleBorder} flex items-center justify-between`}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowGuideBanner(true);
-                  setShowSystemGuideModal(false);
-                }}
-                className={`text-xs font-semibold ${themeClasses.secondaryText} hover:text-emerald-600 cursor-pointer`}
-              >
-                Top banner hamesha dikhayein
-              </button>
+            <div className={`pt-3 border-t ${themeClasses.subtleBorder} flex items-center justify-end`}>
               <button
                 type="button"
                 onClick={() => setShowSystemGuideModal(false)}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-md"
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-md"
               >
-                Samajh Gaya, Kaam Shuru Karein &rarr;
+                Acknowledge & Close &rarr;
               </button>
             </div>
           </div>
@@ -3841,14 +3832,14 @@ export default function PrincePharmaApp() {
         </div>
       )}
 
-      {/* 4.7. MODAL: RECORD UDHARI PAYMENT */}
+      {/* 4.7. MODAL: RECORD CREDIT PAYMENT */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 overflow-y-auto">
           <div className={`${isLight ? 'bg-white text-slate-900' : 'bg-[#0f172a] text-white'} border ${themeClasses.subtleBorder} rounded-2xl max-w-md w-full p-5 space-y-4 my-8 shadow-2xl`}>
             <div className={`flex items-center justify-between pb-3 border-b ${themeClasses.subtleBorder}`}>
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-emerald-600" />
-                Record Udhari / Dues Payment
+                Record Credit Settlement Payment
               </h3>
               <button onClick={() => setShowPaymentModal(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <X className="w-4 h-4" />
